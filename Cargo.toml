@@ -1,0 +1,35 @@
+[package]
+name = "windows-rust-test"
+version = "0.1.0"
+authors = ["ivan tkachenko <ratijas@users.noreply.github.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+name = "windows_rust_test"
+crate-type = ["rlib", "dylib"]
+edition = "2018"
+
+[dependencies]
+itertools = "0.8"
+libc = "0.2"
+widestring = "0.4"
+
+[target.'cfg(windows)'.dependencies]
+windows-service = "0.2"
+
+[target.'cfg(windows)'.dependencies.winapi]
+version = "0.3"
+features = [
+    "errhandlingapi",
+    "minwindef",
+    "ntdef",
+    "pdh",
+    "processenv",
+    "vadefs",
+    "winbase",
+    "winnt",
+    "winreg",
+    "winsvc",
+]
