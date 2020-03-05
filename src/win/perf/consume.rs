@@ -1,23 +1,56 @@
 use std::collections::BTreeMap;
+use std::mem;
 use std::thread::sleep;
 
 use itertools::Itertools;
 use libc::wcslen;
+use winapi::um::sysinfoapi::*;
+use winapi::um::winnls::*;
 
 use crate::win::safe::hkey::*;
 use crate::win::uses::*;
 
-/// Use the HKEY_PERFORMANCE_NLSTEXT key to get the strings.
-fn query_value(localized: bool, value_name: &str) -> WinResult<Vec<u8>> {
-    let value_name_w = U16String::from_str(value_name);
-    let key = if localized { HKEY_PERFORMANCE_NLSTEXT } else { HKEY_PERFORMANCE_TEXT };
+/// Translated function `GetLanguageId` from [MSDN].
+///
+/// [MSDN]: https://docs.microsoft.com/en-us/windows/win32/perfctrs/retrieving-counter-names-and-explanations
+pub fn get_language_id() -> WinResult<LANGID> {
+    // From the docs:
+    // > Before calling the GetVersionEx function, set the dwOSVersionInfoSize member of the
+    // > structure as appropriate to indicate which data structure is being passed to this function.
+    let mut osvi: OSVERSIONINFOW = unsafe { mem::zeroed() };
+    osvi.dwOSVersionInfoSize = mem::size_of::<OSVERSIONINFOW>() as DWORD;
+
+    // SAFETY: dwOSVersionInfoSize member is set
+    if unsafe { GetVersionExW(&mut osvi as *mut _) } == 0 {
+        return Err(WinError::get_with_message().with_comment("GetVersionExW failed"));
+    }
+
+    // Complete language identifier.
+    let mut lang_id = unsafe { GetUserDefaultUILanguage() };
+    // Primary language identifier.
+    let primary = PRIMARYLANGID(lang_id);
+
+    Ok(if (LANG_PORTUGUESE == primary && osvi.dwBuildNumber > 5) || // Windows Vista and later
+        (LANG_CHINESE == primary && (osvi.dwMajorVersion == 5 && osvi.dwMinorVersion >= 1)) // XP and Windows Server 2003
+    {
+        // Use the complete language identifier.
+        lang_id
+    } else {
+        // Use only primary
+        MAKELANGID(primary, 0)
+    })
+}
+
+pub fn query_reg_value(text_hkey: &HKey_Safe, value_name: &str, locale: UseLocale) -> WinResult<Vec<u8>> {
+    let query = locale.add_to_query(value_name);
+    let value_name_w = U16String::from_str(&*value_name);
 
     unsafe {
         let mut buffer_size: DWORD = 0;
 
         // Query the size of the text data so you can allocate the buffer.
         let error_code = RegQueryValueExW(
-            key, // hKey
+            **text_hkey, // hKey
             value_name_w.as_ptr(), // lpValueName
             null_mut(), // lpReserved
             null_mut(), // lpType
@@ -31,7 +64,7 @@ fn query_value(localized: bool, value_name: &str) -> WinResult<Vec<u8>> {
         let mut buffer: Vec<u8> = Vec::with_capacity(buffer_size as usize);
 
         let error_code = RegQueryValueExW(
-            key, // hKey
+            **text_hkey, // hKey
             value_name_w.as_ptr(), // lpValueName
             null_mut(), // lpReserved
             null_mut(), // lpType
@@ -88,12 +121,58 @@ impl AllCounters {
     }
 }
 
-pub fn build_counters_table() -> WinResult<AllCounters> {
+/// Determines which localization strategy will be used to retrieve text data.
+#[derive(Clone, Copy, Debug)]
+pub enum UseLocale {
+
+    /// `HKEY_PERFORMANCE_TEXT` will be used to get english strings.
+    English,
+
+    /// `HKEY_PERFORMANCE_NLSTEXT` will be used to get strings based on the default UI language of
+    /// the current user.
+    UIDefault,
+
+    /// `HKEY_PERFORMANCE_DATA` will be used to get strings based on the language identifier.
+    LangId(LANGID),
+}
+
+impl Default for UseLocale {
+    fn default() -> Self {
+        Self::UIDefault
+    }
+}
+
+impl UseLocale {
+    pub fn raw_hkey(&self) -> HKEY {
+        match self {
+            Self::English => HKEY_PERFORMANCE_TEXT,
+            Self::UIDefault => HKEY_PERFORMANCE_NLSTEXT,
+            Self::LangId(_) => HKEY_PERFORMANCE_DATA,
+        }
+    }
+
+    pub fn add_to_query(&self, query: &str) -> String {
+        match self {
+            Self::LangId(lang_id) => format!("{} {}", query, lang_id),
+            _ => query.to_owned(),
+        }
+    }
+}
+
+/// Get names and help text of all registered performance counters.
+pub fn get_counters_info(machine: Option<String>, locale: UseLocale) -> WinResult<AllCounters> {
     let mut all = AllCounters::new();
 
-    let counters_raw = query_value(true,  "Counter")?;
+    let machine_name_w = machine.map(U16String::from);
+    let lp_machine_name = match machine_name_w.as_ref() {
+        Some(string_w) => string_w.as_ptr(),
+        None => null(),
+    };
 
-    let pairs = query_pairs(counters_raw.as_ref());
+    let text_hkey = RegConnectRegistryW_Safe(lp_machine_name, locale.raw_hkey())?;
+    let counters_raw = query_reg_value(&text_hkey, "Counter", locale)?;
+
+    let pairs = parse_performance_text_pairs(counters_raw.as_ref());
     for (index, value) in pairs {
         let counter = all.entry(index);
         counter.name_index = index;
@@ -102,9 +181,9 @@ pub fn build_counters_table() -> WinResult<AllCounters> {
     // free memory
     drop(counters_raw);
 
-    let help_raw = query_value(true, "Help")?;
+    let help_raw = query_reg_value(&text_hkey, "Help", locale)?;
 
-    let pairs = query_pairs(help_raw.as_ref());
+    let pairs = parse_performance_text_pairs(help_raw.as_ref());
     for (index, value) in pairs {
         // help text index is bigger than entry index by 1
         let counter = all.entry(index - 1);
@@ -124,7 +203,7 @@ fn u8_as_u16_str(source: &[u8]) -> &U16Str {
     }
 }
 
-fn query_pairs(raw: &[u8]) -> Vec<(usize, String)> {
+fn parse_performance_text_pairs(raw: &[u8]) -> Vec<(usize, String)> {
     let raw_u16str = u8_as_u16_str(raw.as_ref());
     let pairs = parse_null_separated_key_value_pairs(raw_u16str.as_slice());
     pairs

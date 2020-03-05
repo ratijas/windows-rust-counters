@@ -1,9 +1,13 @@
+#![allow(non_camel_case_types)]
+
+use std::rc::Rc;
+
 use crate::win::uses::*;
 
 pub fn RegConnectRegistryW_Safe(
     lpMachineName: LPCWSTR,
     hKey: HKEY,
-) -> WinResult<HKeyWrapper> {
+) -> WinResult<HKey_Safe> {
     let mut phkResult: HKEY = null_mut();
 
     unsafe {
@@ -18,7 +22,7 @@ pub fn RegConnectRegistryW_Safe(
         }
     }
     assert_ne!(phkResult, null_mut());
-    Ok(HKeyWrapper(phkResult))
+    Ok(HKey_Safe::owned(phkResult))
 }
 
 pub fn RegCloseKey_Safe(
@@ -36,13 +40,44 @@ pub fn RegCloseKey_Safe(
     Ok(())
 }
 
+/// Memory-safe auto-closing wrapper for HKEY. To access underlying raw HKEY value from `HKey_Safe`
+/// value, use deref operator: `*hkey`; and for `&HKey_Safe` use double deref: `**hkey_ref`.
 #[derive(Debug)]
-pub struct HKeyWrapper(HKEY);
+pub enum HKey_Safe {
+    Owned(Rc<HKEY>),
+}
 
-impl Drop for HKeyWrapper {
+impl HKey_Safe {
+    pub fn owned(hkey: HKEY) -> Self {
+        HKey_Safe::Owned(Rc::new(hkey))
+    }
+}
+
+impl Clone for HKey_Safe {
+    fn clone(&self) -> Self {
+        match self {
+            Self::Owned(rc) => Self::Owned(Rc::clone(rc)),
+        }
+    }
+}
+
+impl std::ops::Deref for HKey_Safe {
+    type Target = HKEY;
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Self::Owned(hkey) => hkey
+        }
+    }
+}
+
+impl Drop for HKey_Safe {
     fn drop(&mut self) {
-        if let Err(e) = RegCloseKey_Safe(self.0) {
-            println!("RegCloseKey Error: {}", e);
+        match self {
+            HKey_Safe::Owned(_) =>
+                if let Err(e) = RegCloseKey_Safe(**self) {
+                    println!("RegCloseKey Error: {}", e);
+                }
         }
     }
 }

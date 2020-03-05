@@ -1,36 +1,44 @@
-use crate::win::uses::*;
-
-use std::fmt;
 use std::error::Error;
+use std::fmt;
+
+use crate::win::uses::*;
 
 #[derive(Debug, Clone)]
 pub struct WinError {
     error_code: DWORD,
+    comment: Option<String>,
     message: Option<String>,
     source: Option<Box<WinError>>,
 }
 
 impl WinError {
-    fn _new(error_code: DWORD, message: Option<String>, source: Option<Box<WinError>>) -> Self {
+    fn _new(error_code: DWORD, comment: Option<String>, message: Option<String>, source: Option<Box<WinError>>) -> Self {
         WinError {
             error_code,
+            comment,
             message,
             source,
         }
     }
 
     pub fn new(error_code: DWORD) -> Self {
-        Self::_new(error_code, None, None)
+        Self::_new(error_code, None, None, None)
     }
 
     pub fn new_with_message(error_code: DWORD) -> Self {
-        Self::_new(error_code, None, None).with_message()
+        Self::_new(error_code, None, None, None).with_message()
     }
 
     /// Call `GetLastError()` but do not attempt to get formatted message from system.
     pub fn get() -> Self {
         let error_code = Self::get_last_error();
         Self::new(error_code)
+    }
+
+    pub fn with_comment<S: Into<String>>(&self, comment: S) -> Self {
+        let mut clone = self.clone();
+        clone.comment = Some(comment.into());
+        clone
     }
 
     /// If formatted message is not initialized, get one via `FormatMessage(...)` and return new error instance.
@@ -63,7 +71,7 @@ impl WinError {
             }
             Err(format_error) => {
                 let message = Self::get_format_message_error(self.error_code);
-                Self::_new(format_error, Some(message), Some(Box::new(self.clone())))
+                Self::_new(format_error, None, Some(message), Some(Box::new(self.clone())))
             }
         }
     }
@@ -114,7 +122,7 @@ impl WinError {
         format!("FormatMessageW failed while formatting error 0x{:08X}", original_error_code)
     }
 
-    const UNKNOWN_ERROR: &'static str = "UNKNOWN ERROR";
+    const UNKNOWN_ERROR: &'static str = "UNKNOWN ERROR CODE";
 }
 
 
@@ -124,6 +132,9 @@ unsafe impl Send for WinError {}
 
 impl fmt::Display for WinError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(comment) = self.comment.as_ref() {
+            write!(f, "{}; ", comment)?;
+        }
         let message = match self.message.as_ref() {
             Some(msg) => msg.as_str(),
             None => Self::UNKNOWN_ERROR,
