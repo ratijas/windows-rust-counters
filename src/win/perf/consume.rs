@@ -41,9 +41,9 @@ pub fn get_language_id() -> WinResult<LANGID> {
     })
 }
 
-pub fn query_reg_value(text_hkey: &HKey_Safe, value_name: &str, locale: UseLocale) -> WinResult<Vec<u8>> {
-    let query = locale.add_to_query(value_name);
-    let value_name_w = U16String::from_str(&*value_name);
+pub fn query_reg_value(text_hkey: &HKey_Safe, source: &str, locale: UseLocale) -> WinResult<Vec<u8>> {
+    let value_name = locale.format_query(source);
+    let wsz_value_name = U16CString::from_str(&*value_name).unwrap();
 
     unsafe {
         let mut buffer_size: DWORD = 0;
@@ -51,28 +51,28 @@ pub fn query_reg_value(text_hkey: &HKey_Safe, value_name: &str, locale: UseLocal
         // Query the size of the text data so you can allocate the buffer.
         let error_code = RegQueryValueExW(
             **text_hkey, // hKey
-            value_name_w.as_ptr(), // lpValueName
+            wsz_value_name.as_ptr(), // lpValueName
             null_mut(), // lpReserved
             null_mut(), // lpType
             null_mut(), // lpData
             &mut buffer_size as LPDWORD, // lpcbData
         ) as DWORD;
         if error_code != ERROR_SUCCESS {
-            return Err(WinError::new_with_message(error_code));
+            return Err(WinError::new_with_message(error_code).with_comment(format!("RegQueryValueExW with query: {}", value_name)));
         }
 
         let mut buffer: Vec<u8> = Vec::with_capacity(buffer_size as usize);
 
         let error_code = RegQueryValueExW(
             **text_hkey, // hKey
-            value_name_w.as_ptr(), // lpValueName
+            wsz_value_name.as_ptr(), // lpValueName
             null_mut(), // lpReserved
             null_mut(), // lpType
             buffer.as_mut_ptr() as LPBYTE, // lpData
             &mut buffer_size as LPDWORD, // lpcbData
         ) as DWORD;
         if error_code != ERROR_SUCCESS {
-            return Err(WinError::new_with_message(error_code));
+            return Err(WinError::new_with_message(error_code).with_comment(format!("RegQueryValueExW with query: {}", value_name)));
         }
 
         buffer.set_len(buffer_size as usize);
@@ -124,7 +124,6 @@ impl AllCounters {
 /// Determines which localization strategy will be used to retrieve text data.
 #[derive(Clone, Copy, Debug)]
 pub enum UseLocale {
-
     /// `HKEY_PERFORMANCE_TEXT` will be used to get english strings.
     English,
 
@@ -145,15 +144,17 @@ impl Default for UseLocale {
 impl UseLocale {
     pub fn raw_hkey(&self) -> HKEY {
         match self {
-            Self::English => HKEY_PERFORMANCE_TEXT,
-            Self::UIDefault => HKEY_PERFORMANCE_NLSTEXT,
-            Self::LangId(_) => HKEY_PERFORMANCE_DATA,
+            UseLocale::English => HKEY_PERFORMANCE_TEXT,
+            UseLocale::UIDefault => HKEY_PERFORMANCE_NLSTEXT,
+            UseLocale::LangId(_) => HKEY_PERFORMANCE_DATA,
         }
     }
 
-    pub fn add_to_query(&self, query: &str) -> String {
+    pub fn format_query(&self, query: &str) -> String {
         match self {
-            Self::LangId(lang_id) => format!("{} {}", query, lang_id),
+            UseLocale::LangId(lang_id) =>
+            // LANGID must formatted as hex value, 3 chars wide, padded with 0 on the left.
+                format!("{} {:03x}", query, lang_id),
             _ => query.to_owned(),
         }
     }
@@ -163,8 +164,8 @@ impl UseLocale {
 pub fn get_counters_info(machine: Option<String>, locale: UseLocale) -> WinResult<AllCounters> {
     let mut all = AllCounters::new();
 
-    let machine_name_w = machine.map(U16String::from);
-    let lp_machine_name = match machine_name_w.as_ref() {
+    let wsz_machine_name = machine.map(U16CString::from);
+    let lp_machine_name = match wsz_machine_name.as_ref() {
         Some(string_w) => string_w.as_ptr(),
         None => null(),
     };

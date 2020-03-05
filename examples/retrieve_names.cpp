@@ -1,5 +1,6 @@
 #include <windows.h>
 #include <stdio.h>
+#include <strsafe.h>
 
 #pragma comment(lib, "advapi32.lib")
 
@@ -7,6 +8,7 @@ LPWSTR GetText(LPWSTR pwszSource);
 BOOL BuildTextTable(LPWSTR pCounterHead, LPWSTR pHelpHead, LPDWORD* pOffsetsHead, LPDWORD pNumberOfOffsets);
 DWORD GetNumberOfTextEntries(LPWSTR pwszSource);
 void PrintCounterAndHelpText(LPWSTR pCounterTextHead, LPWSTR pHelpTextHead, LPDWORD pTextOffsets, DWORD dwNumberOfOffsets);
+LANGID GetLanguageId();
 
 void wmain(void)
 {
@@ -16,7 +18,6 @@ void wmain(void)
     // pCounterTextHead and pHelpTextHead. The text index
     // values mirror the array index.
     DWORD dwNumberOfOffsets = 0;    // Number of elements in the pTextOffsets array.
-
 
     pCounterTextHead = GetText(L"Counter");
     if (NULL == pCounterTextHead)
@@ -57,15 +58,30 @@ void wmain(void)
 }
 
 
-// Use the HKEY_PERFORMANCE_NLSTEXT key to get the strings.
+// Get the text based on the source value. This function uses the
+// HKEY_PERFORMANCE_DATA key to get the strings.
 LPWSTR GetText(LPWSTR pwszSource)
 {
     LPWSTR pBuffer = NULL;
     DWORD dwBufferSize = 0;
     LONG status = ERROR_SUCCESS;
+    LANGID langid = 0;
+    WCHAR wszSourceAndLangId[15];   // Identifies the source of the text; either
+    // "Counter <langid>" or "Help <langid>"
+
+
+    // Create the lpValueName string for the registry query.
+    langid = GetLanguageId();
+    if (0 == langid)
+    {
+        wprintf(L"GetLanguageId failed to get the default language identifier.\n");
+        goto cleanup;
+    }
+
+    StringCchPrintf(wszSourceAndLangId, 15, L"%s %d", pwszSource, langid);
 
     // Query the size of the text data so you can allocate the buffer.
-    status = RegQueryValueEx(HKEY_PERFORMANCE_NLSTEXT, pwszSource, NULL, NULL, NULL, &dwBufferSize);
+    status = RegQueryValueEx(HKEY_PERFORMANCE_DATA, wszSourceAndLangId, NULL, NULL, NULL, &dwBufferSize);
     if (ERROR_SUCCESS != status)
     {
         wprintf(L"RegQueryValueEx failed getting required buffer size. Error is 0x%x.\n", status);
@@ -76,7 +92,7 @@ LPWSTR GetText(LPWSTR pwszSource)
     pBuffer = (LPWSTR)malloc(dwBufferSize);
     if (pBuffer)
     {
-        status = RegQueryValueEx(HKEY_PERFORMANCE_NLSTEXT, pwszSource, NULL, NULL, (LPBYTE)pBuffer, &dwBufferSize);
+        status = RegQueryValueEx(HKEY_PERFORMANCE_DATA, wszSourceAndLangId, NULL, NULL, (LPBYTE)pBuffer, &dwBufferSize);
         if (ERROR_SUCCESS != status)
         {
             wprintf(L"RegQueryValueEx failed with 0x%x.\n", status);
@@ -96,6 +112,44 @@ LPWSTR GetText(LPWSTR pwszSource)
 }
 
 
+// Retrieve the default language identifier of the current user. For most languages,
+// you use the primary language identifier only to retrieve the text. In Windows XP and
+// Windows Server 2003, you use the complete language identifier to retrieve Chinese
+// text. In Windows Vista, you use the complete language identifier to retrieve Portuguese
+// text.
+LANGID GetLanguageId()
+{
+    LANGID langid = 0;  // Complete language identifier.
+    WORD primary = 0;   // Primary language identifier.
+    OSVERSIONINFO osvi;
+
+    ZeroMemory(&osvi, sizeof(OSVERSIONINFO));
+    osvi.dwOSVersionInfoSize = sizeof(OSVERSIONINFO);
+
+    if (GetVersionEx(&osvi))
+    {
+        langid = GetUserDefaultUILanguage();
+        primary = PRIMARYLANGID(langid);
+
+        if ( (LANG_PORTUGUESE == primary && osvi.dwBuildNumber > 5) || // Windows Vista and later
+             (LANG_CHINESE == primary && (osvi.dwMajorVersion == 5 && osvi.dwMinorVersion >= 1)) ) // XP and Windows Server 2003
+        {
+            ; //Use the complete language identifier.
+        }
+        else
+        {
+            langid = primary;
+        }
+    }
+    else
+    {
+        wprintf(L"GetVersionEx failed with 0x%x.\n", GetLastError());
+    }
+
+    return langid;
+}
+
+
 // Build a table of offsets into the counter and help text buffers. Use the index
 // values from the performance data queries to access the offsets.
 BOOL BuildTextTable(LPWSTR pCounterHead, LPWSTR pHelpHead, LPDWORD* pOffsetsHead, LPDWORD pNumberOfOffsets)
@@ -107,7 +161,6 @@ BOOL BuildTextTable(LPWSTR pCounterHead, LPWSTR pHelpHead, LPDWORD* pOffsetsHead
     DWORD dwCounterIndex = 0;       // Index value of the Counter text
     DWORD dwHelpIndex = 0;          // Index value of the Help text
     DWORD dwSize = 0;               // Size of the block of memory that holds the offset array
-
 
     pwszCounterText = pCounterHead;
     pwszHelpText = pHelpHead;
@@ -121,7 +174,7 @@ BOOL BuildTextTable(LPWSTR pCounterHead, LPWSTR pHelpHead, LPDWORD* pOffsetsHead
 
     dwSize = sizeof(DWORD) * (*pNumberOfOffsets + 1);  // Add one to make the array one-based
 
-    pOffstes = (LPDWORD)malloc(dwSize);
+    pOffsets = (LPDWORD)malloc(dwSize);
     if (pOffsets)
     {
         ZeroMemory(pOffsets, dwSize);
@@ -218,7 +271,7 @@ DWORD GetNumberOfTextEntries(LPWSTR pwszSource)
 
 // Print the pairs of counter and help text.
 void PrintCounterAndHelpText(LPWSTR pCounterTextHead, LPWSTR pHelpTextHead, LPDWORD pTextOffsets, DWORD dwNumberOfOffsets)
-{    UNREFERENCED_PARAMETER(dwNumberOfOffsets);
+{   UNREFERENCED_PARAMETER(dwNumberOfOffsets);
     // Counter index values are even numbers that start at 2 so begin with
     // the second element of the array of offsets. Many array elements will 
     // not contain offset values (index values are not contiguous).
