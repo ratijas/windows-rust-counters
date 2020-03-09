@@ -164,7 +164,7 @@ impl UseLocale {
 pub fn get_counters_info(machine: Option<String>, locale: UseLocale) -> WinResult<AllCounters> {
     let mut all = AllCounters::new();
 
-    let wsz_machine_name = machine.map(U16CString::from);
+    let wsz_machine_name = machine.map(|s| U16CString::from_str(s).unwrap());
     let lp_machine_name = match wsz_machine_name.as_ref() {
         Some(string_w) => string_w.as_ptr(),
         None => null(),
