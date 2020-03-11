@@ -9,3 +9,5 @@ pub use winapi::um::winnt::*;
 pub use winapi::um::winreg::*;
 
 pub use super::safe::error::*;
+pub use super::safe::hkey::*;
+pub use super::safe::reg::*;

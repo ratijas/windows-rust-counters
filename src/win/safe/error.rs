@@ -125,11 +125,6 @@ impl WinError {
     const UNKNOWN_ERROR: &'static str = "UNKNOWN ERROR CODE";
 }
 
-
-unsafe impl Sync for WinError {}
-
-unsafe impl Send for WinError {}
-
 impl fmt::Display for WinError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Some(comment) = self.comment.as_ref() {

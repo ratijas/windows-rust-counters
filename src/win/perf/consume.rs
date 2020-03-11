@@ -7,7 +7,6 @@ use libc::wcslen;
 use winapi::um::sysinfoapi::*;
 use winapi::um::winnls::*;
 
-use crate::win::safe::hkey::*;
 use crate::win::uses::*;
 
 /// Translated function `GetLanguageId` from [MSDN].
@@ -39,45 +38,6 @@ pub fn get_language_id() -> WinResult<LANGID> {
         // Use only primary
         MAKELANGID(primary, 0)
     })
-}
-
-pub fn query_reg_value(text_hkey: &HKey_Safe, source: &str, locale: UseLocale) -> WinResult<Vec<u8>> {
-    let value_name = locale.format_query(source);
-    let wsz_value_name = U16CString::from_str(&*value_name).unwrap();
-
-    unsafe {
-        let mut buffer_size: DWORD = 0;
-
-        // Query the size of the text data so you can allocate the buffer.
-        let error_code = RegQueryValueExW(
-            **text_hkey, // hKey
-            wsz_value_name.as_ptr(), // lpValueName
-            null_mut(), // lpReserved
-            null_mut(), // lpType
-            null_mut(), // lpData
-            &mut buffer_size as LPDWORD, // lpcbData
-        ) as DWORD;
-        if error_code != ERROR_SUCCESS {
-            return Err(WinError::new_with_message(error_code).with_comment(format!("RegQueryValueExW with query: {}", value_name)));
-        }
-
-        let mut buffer: Vec<u8> = Vec::with_capacity(buffer_size as usize);
-
-        let error_code = RegQueryValueExW(
-            **text_hkey, // hKey
-            wsz_value_name.as_ptr(), // lpValueName
-            null_mut(), // lpReserved
-            null_mut(), // lpType
-            buffer.as_mut_ptr() as LPBYTE, // lpData
-            &mut buffer_size as LPDWORD, // lpcbData
-        ) as DWORD;
-        if error_code != ERROR_SUCCESS {
-            return Err(WinError::new_with_message(error_code).with_comment(format!("RegQueryValueExW with query: {}", value_name)));
-        }
-
-        buffer.set_len(buffer_size as usize);
-        Ok(buffer)
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -171,18 +131,25 @@ pub fn get_counters_info(machine: Option<String>, locale: UseLocale) -> WinResul
     };
 
     let text_hkey = RegConnectRegistryW_Safe(lp_machine_name, locale.raw_hkey())?;
-    let counters_raw = query_reg_value(&text_hkey, "Counter", locale)?;
+    let query = locale.format_query("Counter");
+    let counters_raw = query_value(*text_hkey, query.as_str(), None)?;
 
+    // save buffer size to use later as an optimization opportunity for similar call
+    let buffer_size = counters_raw.len();
     let pairs = parse_performance_text_pairs(counters_raw.as_ref());
     for (index, value) in pairs {
         let counter = all.entry(index);
         counter.name_index = index;
         counter.name_value = value;
     }
-    // free memory
-    drop(counters_raw);
 
-    let help_raw = query_reg_value(&text_hkey, "Help", locale)?;
+    // re-use buffer
+    let mut help_raw = counters_raw;
+
+    // length of Help text is supposedly much longer than the names.
+    let buffer_size_hint = Some(4 * buffer_size);
+    let query = locale.format_query("Help");
+    query_value_with_buffer(*text_hkey, query.as_str(), buffer_size_hint, &mut help_raw)?;
 
     let pairs = parse_performance_text_pairs(help_raw.as_ref());
     for (index, value) in pairs {
