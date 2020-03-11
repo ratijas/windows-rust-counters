@@ -1,7 +1,7 @@
-extern crate windows_rust_test;
+extern crate windows_rust_counters;
 
-use windows_rust_test::win::perf::consume::*;
-use windows_rust_test::win::uses::*;
+use windows_rust_counters::win::perf::consume::*;
+use windows_rust_counters::win::uses::*;
 
 fn main() {
     println!("English locale:");

@@ -1,10 +1,10 @@
-extern crate windows_rust_test;
+extern crate windows_rust_counters;
 
 use std::thread::sleep;
 use std::time::Duration;
 
-use windows_rust_test::morse::*;
-use windows_rust_test::signal::rx::*;
+use windows_rust_counters::morse::*;
+use windows_rust_counters::signal::rx::*;
 
 fn main() {
     println!("Morse message:");

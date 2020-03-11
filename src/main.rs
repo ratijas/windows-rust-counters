@@ -5,7 +5,7 @@
 extern crate libc;
 extern crate widestring;
 extern crate winapi;
-extern crate windows_rust_test;
+extern crate windows_rust_counters;
 #[macro_use]
 extern crate windows_service;
 
@@ -13,10 +13,10 @@ use itertools::Itertools;
 
 use std::io::{Read, Write};
 use std::time::Duration;
-use windows_rust_test::morse::*;
-use windows_rust_test::signal::rx::*;
-use windows_rust_test::signal::tx::*;
-use windows_rust_test::win::uses::*;
+use windows_rust_counters::morse::*;
+use windows_rust_counters::signal::rx::*;
+use windows_rust_counters::signal::tx::*;
+use windows_rust_counters::win::uses::*;
 
 use self::ascii::*;
 
@@ -27,9 +27,9 @@ enum Role {
 
 mod ascii {
     use std::error::Error;
-    use windows_rust_test::morse::*;
-    use windows_rust_test::signal::tx::Tx;
-    use windows_rust_test::signal::rx::Rx;
+    use windows_rust_counters::morse::*;
+    use windows_rust_counters::signal::tx::Tx;
+    use windows_rust_counters::signal::rx::Rx;
 
     pub const ASCII_ON: char = '-';
     pub const ASCII_OFF: char = ' ';

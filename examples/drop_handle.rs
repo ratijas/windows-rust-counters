@@ -1,7 +1,7 @@
-extern crate windows_rust_test;
+extern crate windows_rust_counters;
 
-use windows_rust_test::win::safe::hkey::*;
-use windows_rust_test::win::uses::*;
+use windows_rust_counters::win::safe::hkey::*;
+use windows_rust_counters::win::uses::*;
 
 fn main() {
     match RegConnectRegistryW_Safe(

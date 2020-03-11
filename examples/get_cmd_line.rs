@@ -1,9 +1,9 @@
 extern crate libc;
-extern crate windows_rust_test;
+extern crate windows_rust_counters;
 
 use libc::wcslen;
 
-use windows_rust_test::win::uses::*;
+use windows_rust_counters::win::uses::*;
 
 fn main() {
     let cmd = unsafe {
