@@ -1,0 +1,16 @@
+[package]
+name = "morse-stream"
+version = "0.1.0"
+authors = ["ivan tkachenko <ratijas@users.noreply.github.com>"]
+edition = "2018"
+description = "Morse Code streaming coder and decoder"
+
+[lib]
+name = "morse_stream"
+
+[[bin]]
+name = "morse-coder"
+path = "src/main.rs"
+
+[dependencies]
+signal-flow = { path = "../signal-flow" }

@@ -1,0 +1,10 @@
+[package]
+name = "signal-flow"
+version = "0.1.0"
+authors = ["ivan tkachenko <ratijas@users.noreply.github.com>"]
+edition = "2018"
+
+[lib]
+name = "signal_flow"
+
+[dependencies]

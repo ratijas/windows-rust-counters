@@ -1,0 +1,34 @@
+[package]
+name = "win-high"
+version = "0.1.0"
+authors = ["ivan tkachenko <ratijas@users.noreply.github.com>"]
+edition = "2018"
+
+[lib]
+name = "win_high"
+
+[dependencies]
+itertools = "0.8"
+widestring = "0.4"
+
+[target.'cfg(windows)'.dependencies]
+win-low = { path = "../win-low" }
+
+[target.'cfg(windows)'.dependencies.winapi]
+version = "0.3"
+features = [
+    "errhandlingapi",
+    "minwinbase",
+    "minwindef",
+    "ntdef",
+    "pdh",
+    "processenv",
+    "sysinfoapi",
+    "vadefs",
+    "winbase",
+    "winerror",
+    "winnls",
+    "winnt",
+    "winreg",
+    "winsvc",
+]

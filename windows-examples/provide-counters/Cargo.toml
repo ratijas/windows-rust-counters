@@ -1,0 +1,22 @@
+[package]
+name = "example-provide-counters"
+version = "0.1.0"
+authors = ["ivan tkachenko <ratijas@users.noreply.github.com>"]
+edition = "2018"
+
+[lib]
+name = "ExampleProvideCounters" # .dll
+
+[dependencies]
+
+hexyl = "*"
+
+[target.'cfg(windows)'.dependencies]
+win-high = { path = "../../win-high" }
+win-low = { path = "../../win-low" }
+# temporary workaround.  at the time of writing, 1.0.3 just came out and broke the build.
+quote = "=1.0.1"
+
+[build-dependencies]
+cargo-emit = "0.1"
+path-slash = "0.1"

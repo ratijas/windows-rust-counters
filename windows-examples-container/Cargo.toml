@@ -1,0 +1,26 @@
+[package]
+name = "examples-windows-rust"
+version = "0.1.0"
+authors = ["ivan tkachenko <ratijas@users.noreply.github.com>"]
+edition = "2018"
+description = "Dummy library to gather single-file examples in one place"
+
+[dependencies]
+
+libc = "0.2"
+hexyl = "0.7"
+# temporary workaround.  at the time of writing, 1.0.3 just came out and broke the build.
+quote = "=1.0.1"
+
+signal-flow = { path = "../signal-flow" }
+morse-stream = { path = "../morse-stream" }
+
+[target.'cfg(windows)'.dependencies]
+win-high = { path = "../win-high" }
+win-low = { path = "../win-low" }
+
+[target.'cfg(windows)'.dependencies.winapi]
+version = "0.3"
+features = [
+    "processenv",
+]

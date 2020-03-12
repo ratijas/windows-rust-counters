@@ -1,0 +1,18 @@
+[package]
+name = "win-low"
+version = "0.1.0"
+authors = ["ivan tkachenko <ratijas@users.noreply.github.com>"]
+edition = "2018"
+description = "Low-level WinAPI bindings which are missing in winapi crate"
+
+[lib]
+name = "win_low"
+
+[dependencies]
+[target.'cfg(windows)'.dependencies.winapi]
+version = "0.3"
+features = [
+    "minwinbase",
+    "minwindef",
+    "ntdef",
+]
