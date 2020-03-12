@@ -615,7 +615,6 @@ pub fn print<I: IntoIterator<Item=Signal>>(sequence: I) {
 #[cfg(test)]
 mod test {
     use super::*;
-    use std::mem;
 
     const SOS: &'static [Signal] = &[
         ON, OFF, ON, OFF, ON, // S: · · ·
@@ -655,8 +654,9 @@ mod test {
     }
 
     #[test]
+    #[allow(non_snake_case)]
     fn test_decode_SOS() {
-        let mut coder = DecoderRx::<ITU, _>::new(IteratorRx::from(SOS.to_owned()));
+        let coder = DecoderRx::<ITU, _>::new(IteratorRx::from(SOS.to_owned()));
         let decoded: String = coder.collect().unwrap();
 
         assert_eq!(decoded, "SOS");
@@ -664,7 +664,7 @@ mod test {
 
     #[test]
     fn test_decode_words() {
-        let mut coder = DecoderRx::<ITU, _>::new(IteratorRx::from(A_B.to_owned()));
+        let coder = DecoderRx::<ITU, _>::new(IteratorRx::from(A_B.to_owned()));
         let decoded: String = coder.collect().unwrap();
 
         assert_eq!(decoded, "A B");
