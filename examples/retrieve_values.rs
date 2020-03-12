@@ -1,26 +1,37 @@
+extern crate hexyl;
 extern crate windows_rust_counters;
+
+use std::io::{self, Cursor};
+
+use hexyl::*;
 
 use windows_rust_counters::win::uses::*;
 
 fn main() {
     let buf = do_get_values().expect("Get values");
-
-    for (i, byte) in buf.into_iter().enumerate() {
-        print!("{:02X} ", byte);
-        // line break before next row
-        if (i + 1) % 16 == 0 {
-            println!();
-        }
-    }
-    println!();
+    xxd(&*buf).expect("Print hex value");
 }
 
 fn do_get_values() -> WinResult<Vec<u8>> {
     let hkey = RegConnectRegistryW_Safe(null(), HKEY_PERFORMANCE_DATA)?;
 
+    // Retrieve counter data for the Processor object.
     query_value(
         *hkey,
-        "Global",
+        "238",
         Some(2_000_000)
     )
+}
+
+fn xxd(buffer: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
+    let mut reader = Cursor::new(buffer);
+    let stdout = io::stdout();
+    let mut stdout_lock = stdout.lock();
+    let show_color = true;
+    let border_style = BorderStyle::Unicode;
+    let squeeze = false;
+
+    let mut printer = Printer::new(&mut stdout_lock, show_color, border_style, squeeze);
+    printer.display_offset(0);
+    printer.print_all(&mut reader)
 }

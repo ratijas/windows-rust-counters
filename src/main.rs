@@ -4,10 +4,9 @@
 
 extern crate libc;
 extern crate widestring;
+#[macro_use]
 extern crate winapi;
 extern crate windows_rust_counters;
-#[macro_use]
-extern crate windows_service;
 
 use itertools::Itertools;
 

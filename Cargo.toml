@@ -11,6 +11,9 @@ name = "windows_rust_counters"
 crate-type = ["rlib", "dylib"]
 edition = "2018"
 
+[dev-dependencies]
+hexyl = "0.7.0"
+
 [dependencies]
 itertools = "0.8"
 libc = "0.2"
