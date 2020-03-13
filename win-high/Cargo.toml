@@ -11,6 +11,9 @@ name = "win_high"
 itertools = "0.8"
 widestring = "0.4"
 
+[dev-dependencies]
+lazy_static = "1"
+
 [target.'cfg(windows)'.dependencies]
 win-low = { path = "../win-low" }
 

@@ -5,29 +5,54 @@ use crate::prelude::v1::*;
 // &'a UStr<Char> -> Iterator<Item=&'a UCStr<Char>>
 // &[&UStr<Char>] -> UCString<Char>
 
-/// Iterate oven nul-terminated substrings of the memory buffer which
-/// is terminated by double-nul sequence.
+/// Iterate oven nul-terminated substrings of the memory buffer which must be
+/// terminated by double-nul sequence.
 ///
 /// # Panics
 ///
 /// This function panics if `p` is null.
-pub unsafe fn split_null_delimited_double_null_terminated_ptr<'a, C: UChar + 'static>(
+pub unsafe fn split_null_delimited_double_null_terminated_ptr<'a, C: UChar>(
     p: *const C
-) -> impl Iterator<Item=&'a UCStr<C>> {
+) -> NullDelimitedDoubleNullTerminated<'a, C> {
     assert!(!p.is_null());
     // if buffer consists only of double-nul sequence, move `current` straight to its end.
     let current = if is_double_null_terminator(p) { p.add(1) } else { p };
     // ensure there's an end to this buffer pointed by p.
     // also, move to the second (and the last) nul character of the double-nul terminator.
     let end = find_double_null_terminator(p).add(1);
-    NullDelimitedDoubleNullTerminatedPtr {
+    NullDelimitedDoubleNullTerminated {
         current,
         end,
         _marker: PhantomData,
     }
 }
 
-struct NullDelimitedDoubleNullTerminatedPtr<'a, C: UChar> {
+/// Iterate oven nul-terminated substrings of the slice which must be
+/// terminated by double-nul sequence.
+///
+/// # Panics
+///
+/// This function panics if slice does not end with double-nul terminator.
+pub fn split_null_delimited_double_null_terminated<S, C: UChar>(
+    buf: &S
+) -> NullDelimitedDoubleNullTerminated<C>
+    where S: AsRef<UStr<C>>
+{
+    let slice = buf.as_ref().as_slice();
+    // if !slice.ends_with(&[C::NUL; 2]) {
+    //     NullDelimitedDoubleNullTerminated {
+    //         current: null(),
+    //         end: null(),
+    //         _marker: PhantomData,
+    //     }
+    // }
+    assert!(slice.ends_with(&[C::NUL; 2]), "slice must be terminated with double-nul");
+    unsafe {
+        split_null_delimited_double_null_terminated_ptr(slice.as_ptr())
+    }
+}
+
+pub struct NullDelimitedDoubleNullTerminated<'a, C> {
     /// Pointer to the start of the next substring, or at the last nul character of the double-nul
     /// terminator.
     current: *const C,
@@ -78,7 +103,7 @@ pub unsafe fn is_double_null_terminator<C: UChar>(p: *const C) -> bool {
 mod imp {
     use super::*;
 
-    impl<'a, C: UChar> Iterator for NullDelimitedDoubleNullTerminatedPtr<'a, C> {
+    impl<'a, C: UChar> Iterator for NullDelimitedDoubleNullTerminated<'a, C> {
         type Item = &'a UCStr<C>;
 
         fn next(&mut self) -> Option<Self::Item> {
@@ -140,71 +165,114 @@ mod test {
     use super::*;
     use itertools::Itertools;
 
+    lazy_static! {
+        static ref U_EMP: U16String = U16String::from_str("");                 // panic!()
+        static ref U_NUL_NUL: U16String = U16String::from_str("\0\0");         // []
+        static ref U_ABC: U16String = U16String::from_str("abc\0\0");          // ["abc\0"]
+        static ref U_ABC_DEF: U16String = U16String::from_str("abc\0def\0\0"); // ["abc\0", "def\0"]
+        static ref U_NUL_DEF: U16String = U16String::from_str("\0def\0\0");    // ["\0", "def\0"]
+
+        static ref UC_EMP: U16CString = unsafe { U16CString::from_str_with_nul_unchecked("\0") };
+        static ref UC_ABC: U16CString = unsafe { U16CString::from_str_with_nul_unchecked("abc\0") };
+        static ref UC_DEF: U16CString = unsafe { U16CString::from_str_with_nul_unchecked("def\0") };
+    }
+
     #[test]
     fn test_find_double_null_terminator_empty() {
         unsafe {
-            let buf = U16String::from_str("\0\0");
-            let end = find_double_null_terminator(buf.as_ptr());
-            assert_eq!(buf.as_ptr(), end);
+            let end = find_double_null_terminator(U_NUL_NUL.as_ptr());
+            assert_eq!(U_NUL_NUL.as_ptr(), end);
         }
     }
 
     #[test]
     fn test_find_double_null_terminator_single() {
         unsafe {
-            let buf = U16String::from_str("abc\0\0");
-            let end = find_double_null_terminator(buf.as_ptr());
-            assert_eq!(buf.as_ptr().add("abc".len()), end);
+            let end = find_double_null_terminator(U_ABC.as_ptr());
+            assert_eq!(U_ABC.as_ptr().add("abc".len()), end);
         }
     }
 
     #[test]
     fn test_find_double_null_terminator_multi() {
         unsafe {
-            let buf = U16String::from_str("abc\0def\0\0");
-            let end = find_double_null_terminator(buf.as_ptr());
-            assert_eq!(buf.as_ptr().add("abc\0def".len()), end);
+            let end = find_double_null_terminator(U_ABC_DEF.as_ptr());
+            assert_eq!(U_ABC_DEF.as_ptr().add("abc\0def".len()), end);
         }
     }
 
     #[test]
-    fn test_split_empty() {
+    fn test_find_double_null_terminator_starts_with_single_nul() {
         unsafe {
-            let test = U16String::from_str("\0\0");         // -> ["\0"]
-            let split = split_null_delimited_double_null_terminated_ptr(test.as_ptr());
+            let end = find_double_null_terminator(U_NUL_DEF.as_ptr());
+            assert_eq!(U_NUL_DEF.as_ptr().add("\0def".len()), end);
+        }
+    }
+
+    #[test]
+    fn test_split_ptr_empty() {
+        unsafe {
+            let split = split_null_delimited_double_null_terminated_ptr(U_NUL_NUL.as_ptr());
             assert!(split.collect_vec().is_empty());
         }
     }
 
     #[test]
-    fn test_split_single() {
+    fn test_split_ptr_single() {
         unsafe {
-            let test = U16String::from_str("abc\0\0");      // -> ["abc\0"]
-            let cstr_abc = U16CString::from_str_with_nul_unchecked("abc\0");
-            let split = split_null_delimited_double_null_terminated_ptr(test.as_ptr());
-            assert_eq!(split.collect_vec(), vec![cstr_abc.as_ref()]);
+            let split = split_null_delimited_double_null_terminated_ptr(U_ABC.as_ptr());
+            assert_eq!(split.collect_vec(), &[&**UC_ABC]);
         }
     }
 
     #[test]
-    fn test_split_multi() {
+    fn test_split_ptr_multi() {
         unsafe {
-            let test = U16String::from_str("abc\0def\0\0"); // -> ["abc\0", "def\0"]
-            let cstr_abc = U16CString::from_str_with_nul_unchecked("abc\0");
-            let cstr_def = U16CString::from_str_with_nul_unchecked("def\0");
-            let split = split_null_delimited_double_null_terminated_ptr(test.as_ptr());
-            assert_eq!(split.collect_vec(), vec![cstr_abc.as_ref(), cstr_def.as_ref()]);
+            let split = split_null_delimited_double_null_terminated_ptr(U_ABC_DEF.as_ptr());
+            assert_eq!(split.collect_vec(), &[&**UC_ABC, &**UC_DEF]);
         }
     }
 
     #[test]
-    fn test_split_starts_with_single_nul() {
+    fn test_split_ptr_starts_with_single_nul() {
         unsafe {
-            let test = U16String::from_str("\0def\0\0");    // -> ["\0", "def\0"]
-            let cstr_emp = U16CString::from_str_with_nul_unchecked("\0");
-            let cstr_def = U16CString::from_str_with_nul_unchecked("def\0");
-            let split = split_null_delimited_double_null_terminated_ptr(test.as_ptr());
-            assert_eq!(split.collect_vec(), vec![cstr_emp.as_ref(), cstr_def.as_ref()]);
+            let split = split_null_delimited_double_null_terminated_ptr(U_NUL_DEF.as_ptr());
+            assert_eq!(split.collect_vec(), &[&**UC_EMP, &**UC_DEF]);
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "slice must be terminated with double-nul")]
+    fn test_split_slice_no_data() {
+        let split = split_null_delimited_double_null_terminated(&*U_EMP);
+        let _ = split.collect_vec();
+    }
+
+    #[test]
+    fn test_split_slice_empty() {
+        let split = split_null_delimited_double_null_terminated(&*U_NUL_NUL);
+        assert!(split.collect_vec().is_empty());
+    }
+
+    #[test]
+    fn test_split_slice_single() {
+        let split = split_null_delimited_double_null_terminated(&*U_ABC);
+        assert_eq!(split.collect_vec(), &[&**UC_ABC]);
+    }
+
+    #[test]
+    fn test_split_slice_multi() {
+        unsafe {
+            let split = split_null_delimited_double_null_terminated_ptr(U_ABC_DEF.as_ptr());
+            assert_eq!(split.collect_vec(), &[&**UC_ABC, &**UC_DEF]);
+        }
+    }
+
+    #[test]
+    fn test_split_slice_starts_with_single_nul() {
+        unsafe {
+            let split = split_null_delimited_double_null_terminated_ptr(U_NUL_DEF.as_ptr());
+            assert_eq!(split.collect_vec(), &[&**UC_EMP, &**UC_DEF]);
         }
     }
 }
