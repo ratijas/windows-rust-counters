@@ -39,13 +39,6 @@ pub fn split_nul_delimited_double_nul_terminated<S, C: UChar>(
     where S: AsRef<UStr<C>>
 {
     let slice = buf.as_ref().as_slice();
-    // if !slice.ends_with(&[C::NUL; 2]) {
-    //     NullDelimitedDoubleNullTerminated {
-    //         current: null(),
-    //         end: null(),
-    //         _marker: PhantomData,
-    //     }
-    // }
     assert!(slice.ends_with(&[C::NUL; 2]), "slice must be terminated with double-nul");
     unsafe {
         split_nul_delimited_double_nul_terminated_ptr(slice.as_ptr())
