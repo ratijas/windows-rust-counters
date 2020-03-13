@@ -45,6 +45,28 @@ pub fn split_nul_delimited_double_nul_terminated<S, C: UChar>(
     }
 }
 
+/// Join strings with nul and ensure the whole thing is double-nul terminated. Strings must be
+/// non-empty to avoid double-nul sequences in the middle. If empty string is encountered, `Err`
+/// with its position is returned.
+pub fn join_nul_terminate_double_nul<C: UChar>(strings: &[&UCStr<C>]) -> Result<UString<C>, usize> {
+    let mut s = UString::new();
+    for (i, item) in strings.iter().enumerate() {
+        if item.is_empty() {
+            return Err(i);
+        }
+        let str = UStr::from_slice(UCStr::as_slice_with_nul(item));
+        s.push(str);
+    }
+    // ensure string is double-nul terminated
+    if s.is_empty() {
+        s.push_slice(&[C::NUL, C::NUL]);
+    } else {
+        // one nul is already there as a part of the last string's nul terminator
+        s.push_slice(&[C::NUL]);
+    }
+    Ok(s)
+}
+
 pub struct NullDelimitedDoubleNullTerminated<'a, C> {
     /// Pointer to the start of the next substring, or at the last nul character of the double-nul
     /// terminator.
@@ -227,5 +249,29 @@ mod test {
             let split = split_nul_delimited_double_nul_terminated_ptr(U_NUL_DEF.as_ptr());
             assert_eq!(split.collect_vec(), &[&**UC_EMP, &**UC_DEF]);
         }
+    }
+
+    #[test]
+    fn test_join_empty() {
+        let buf = join_nul_terminate_double_nul::<u16>(&[]).unwrap();
+        assert_eq!(buf, &**U_NUL_NUL);
+    }
+
+    #[test]
+    fn test_join_single() {
+        let buf = join_nul_terminate_double_nul::<u16>(&[&**UC_ABC]).unwrap();
+        assert_eq!(buf, &**U_ABC);
+    }
+
+    #[test]
+    fn test_join_multi() {
+        let buf = join_nul_terminate_double_nul::<u16>(&[&**UC_ABC, &**UC_DEF]).unwrap();
+        assert_eq!(buf, &**U_ABC_DEF);
+    }
+
+    #[test]
+    fn test_join_has_empty_cstr() {
+        let res = join_nul_terminate_double_nul::<u16>(&[&**UC_ABC, &**UC_EMP, &**UC_DEF]);
+        assert_eq!(res, Err(1));
     }
 }
