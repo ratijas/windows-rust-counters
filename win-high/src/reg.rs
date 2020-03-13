@@ -6,6 +6,7 @@ const INITIAL_BUFFER_SIZE: usize = 8 * 1024;
 pub fn query_value(
     hkey: HKEY,
     value_name: &str,
+    value_type: Option<&mut DWORD>,
     buffer_size_hint: Option<usize>
 ) -> WinResult<Vec<u8>>
 {
@@ -13,6 +14,7 @@ pub fn query_value(
     query_value_with_buffer(
         hkey,
         value_name,
+        value_type,
         buffer_size_hint,
         &mut buffer,
     )?;
@@ -26,12 +28,14 @@ pub fn query_value(
 pub fn query_value_with_buffer(
     hkey: HKEY,
     value_name: &str,
+    value_type: Option<&mut DWORD>,
     buffer_size_hint: Option<usize>,
     buffer: &mut Vec<u8>
 ) -> WinResult<()>
 {
     // prepare value name with trailing NULL char
     let wsz_value_name = U16CString::from_str(value_name).unwrap();
+    let lp_type = value_type.map(|t| t as LPDWORD).unwrap_or(null_mut());
 
     // start with some non-zero size, even if explicit zero were provided, and gradually
     // increment it until value fits into buffer.
@@ -73,7 +77,7 @@ pub fn query_value_with_buffer(
             hkey,
             wsz_value_name.as_ptr(),
             null_mut(),
-            null_mut(),
+            lp_type,
             buffer.as_mut_ptr(),
             &mut buffer_size_out as LPDWORD,
         ) as DWORD;
@@ -92,7 +96,7 @@ pub fn query_value_with_buffer(
                 hkey,
                 wsz_value_name.as_ptr(),
                 null_mut(),
-                null_mut(),
+                lp_type,
                 buffer.as_mut_ptr(),
                 &mut buffer_size_out as LPDWORD,
             ) as DWORD;

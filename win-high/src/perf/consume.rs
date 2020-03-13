@@ -130,7 +130,7 @@ pub fn get_counters_info(machine: Option<String>, locale: UseLocale) -> WinResul
 
     let text_hkey = RegConnectRegistryW_Safe(lp_machine_name, locale.raw_hkey())?;
     let query = locale.format_query("Counter");
-    let counters_raw = query_value(*text_hkey, query.as_str(), None)?;
+    let counters_raw = query_value(*text_hkey, query.as_str(), None, None)?;
 
     // save buffer size to use later as an optimization opportunity for similar call
     let buffer_size = counters_raw.len();
@@ -147,7 +147,7 @@ pub fn get_counters_info(machine: Option<String>, locale: UseLocale) -> WinResul
     // length of Help text is supposedly much longer than the names.
     let buffer_size_hint = Some(4 * buffer_size);
     let query = locale.format_query("Help");
-    query_value_with_buffer(*text_hkey, query.as_str(), buffer_size_hint, &mut help_raw)?;
+    query_value_with_buffer(*text_hkey, query.as_str(), None, buffer_size_hint, &mut help_raw)?;
 
     let pairs = parse_performance_text_pairs(help_raw.as_ref());
     for (index, value) in pairs {

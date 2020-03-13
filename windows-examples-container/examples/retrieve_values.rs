@@ -12,12 +12,19 @@ fn main() {
 fn do_get_values() -> WinResult<Vec<u8>> {
     let hkey = RegConnectRegistryW_Safe(null(), HKEY_PERFORMANCE_DATA)?;
 
+    let mut typ: DWORD = 0;
+
     // Retrieve counter data for the Processor object.
-    query_value(
+    let value = query_value(
         *hkey,
         "238",
+        Some(&mut typ),
         Some(2_000_000)
-    )
+    );
+
+    println!("Value type is {}", typ);
+
+    value
 }
 
 fn xxd(buffer: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
