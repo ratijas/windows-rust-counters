@@ -61,14 +61,6 @@ pub struct NullDelimitedDoubleNullTerminated<'a, C> {
     _marker: PhantomData<&'a C>,
 }
 
-// pub fn split_slice<C: UChar + 'static>(slice: &UStr<C>) -> impl Iterator<Item=&UCStr<C>> {
-//     NullDelimitedDoubleNullTerminatedSlice { inner: slice }
-// }
-
-// struct NullDelimitedDoubleNullTerminatedSlice<'a, C: UChar> {
-//     inner: &'a UStr<C>,
-// }
-
 /// Read and increment the pointer until double-NULL terminator is found.
 /// Doing so, eventually would either return a valid pointer, or segfault.
 ///
@@ -126,38 +118,6 @@ mod imp {
             }
         }
     }
-}
-
-/// Commonly used raw byte string format uses 0u16 as a delimiter for UTF-16 strings
-/// terminated by double 0u16 sequence.
-pub fn parse_slice_null_delimited_double_null_terminated(input: &[u16]) -> Vec<&U16CStr> {
-    if !input.ends_with(&[u16::NUL; 2]) {
-        return vec![];
-    }
-    unsafe { parse_ptr_null_delimited_double_null_terminated(input.as_ptr()) }
-}
-
-/// Usa safe wrapper `parse_slice_null_delimited_double_null_terminated` whenever slice length is
-/// known in advance.
-///
-/// Note that "empty" double-null sequence by itself is a collection of one empty string.
-pub unsafe fn parse_ptr_null_delimited_double_null_terminated<'a>(mut p: *const u16) -> Vec<&'a U16CStr> {
-    if p.is_null() {
-        return vec![];
-    }
-    let mut strings = Vec::new();
-    loop {
-        // read one U16CStr
-        let string = U16CStr::from_ptr_str(p);
-        strings.push(string);
-        p = p.add(string.len() + 1);
-        // now `p` points at right after NUL which terminates the `string`,
-        // which is, either at the beginning of the new str, or at the second terminating NUL.
-        if p.read() == u16::NUL {
-            break;
-        }
-    }
-    strings
 }
 
 #[cfg(test)]
