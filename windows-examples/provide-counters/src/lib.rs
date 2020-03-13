@@ -17,7 +17,7 @@ extern "system" fn open_proc(pContext: LPWSTR) -> DWORD {
         vec![]
     } else {
         // SAFETY: we have to trust the system
-        unsafe { split_null_delimited_double_null_terminated_ptr(pContext) }.collect()
+        unsafe { split_nul_delimited_double_nul_terminated_ptr(pContext) }.collect()
     };
     println!("Hello, context is: {:?}", ctx);
     ERROR_SUCCESS

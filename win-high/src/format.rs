@@ -11,7 +11,7 @@ use crate::prelude::v1::*;
 /// # Panics
 ///
 /// This function panics if `p` is null.
-pub unsafe fn split_null_delimited_double_null_terminated_ptr<'a, C: UChar>(
+pub unsafe fn split_nul_delimited_double_nul_terminated_ptr<'a, C: UChar>(
     p: *const C
 ) -> NullDelimitedDoubleNullTerminated<'a, C> {
     assert!(!p.is_null());
@@ -33,7 +33,7 @@ pub unsafe fn split_null_delimited_double_null_terminated_ptr<'a, C: UChar>(
 /// # Panics
 ///
 /// This function panics if slice does not end with double-nul terminator.
-pub fn split_null_delimited_double_null_terminated<S, C: UChar>(
+pub fn split_nul_delimited_double_nul_terminated<S, C: UChar>(
     buf: &S
 ) -> NullDelimitedDoubleNullTerminated<C>
     where S: AsRef<UStr<C>>
@@ -48,7 +48,7 @@ pub fn split_null_delimited_double_null_terminated<S, C: UChar>(
     // }
     assert!(slice.ends_with(&[C::NUL; 2]), "slice must be terminated with double-nul");
     unsafe {
-        split_null_delimited_double_null_terminated_ptr(slice.as_ptr())
+        split_nul_delimited_double_nul_terminated_ptr(slice.as_ptr())
     }
 }
 
@@ -172,7 +172,7 @@ mod test {
     #[test]
     fn test_split_ptr_empty() {
         unsafe {
-            let split = split_null_delimited_double_null_terminated_ptr(U_NUL_NUL.as_ptr());
+            let split = split_nul_delimited_double_nul_terminated_ptr(U_NUL_NUL.as_ptr());
             assert!(split.collect_vec().is_empty());
         }
     }
@@ -180,7 +180,7 @@ mod test {
     #[test]
     fn test_split_ptr_single() {
         unsafe {
-            let split = split_null_delimited_double_null_terminated_ptr(U_ABC.as_ptr());
+            let split = split_nul_delimited_double_nul_terminated_ptr(U_ABC.as_ptr());
             assert_eq!(split.collect_vec(), &[&**UC_ABC]);
         }
     }
@@ -188,7 +188,7 @@ mod test {
     #[test]
     fn test_split_ptr_multi() {
         unsafe {
-            let split = split_null_delimited_double_null_terminated_ptr(U_ABC_DEF.as_ptr());
+            let split = split_nul_delimited_double_nul_terminated_ptr(U_ABC_DEF.as_ptr());
             assert_eq!(split.collect_vec(), &[&**UC_ABC, &**UC_DEF]);
         }
     }
@@ -196,7 +196,7 @@ mod test {
     #[test]
     fn test_split_ptr_starts_with_single_nul() {
         unsafe {
-            let split = split_null_delimited_double_null_terminated_ptr(U_NUL_DEF.as_ptr());
+            let split = split_nul_delimited_double_nul_terminated_ptr(U_NUL_DEF.as_ptr());
             assert_eq!(split.collect_vec(), &[&**UC_EMP, &**UC_DEF]);
         }
     }
@@ -204,26 +204,26 @@ mod test {
     #[test]
     #[should_panic(expected = "slice must be terminated with double-nul")]
     fn test_split_slice_no_data() {
-        let split = split_null_delimited_double_null_terminated(&*U_EMP);
+        let split = split_nul_delimited_double_nul_terminated(&*U_EMP);
         let _ = split.collect_vec();
     }
 
     #[test]
     fn test_split_slice_empty() {
-        let split = split_null_delimited_double_null_terminated(&*U_NUL_NUL);
+        let split = split_nul_delimited_double_nul_terminated(&*U_NUL_NUL);
         assert!(split.collect_vec().is_empty());
     }
 
     #[test]
     fn test_split_slice_single() {
-        let split = split_null_delimited_double_null_terminated(&*U_ABC);
+        let split = split_nul_delimited_double_nul_terminated(&*U_ABC);
         assert_eq!(split.collect_vec(), &[&**UC_ABC]);
     }
 
     #[test]
     fn test_split_slice_multi() {
         unsafe {
-            let split = split_null_delimited_double_null_terminated_ptr(U_ABC_DEF.as_ptr());
+            let split = split_nul_delimited_double_nul_terminated_ptr(U_ABC_DEF.as_ptr());
             assert_eq!(split.collect_vec(), &[&**UC_ABC, &**UC_DEF]);
         }
     }
@@ -231,7 +231,7 @@ mod test {
     #[test]
     fn test_split_slice_starts_with_single_nul() {
         unsafe {
-            let split = split_null_delimited_double_null_terminated_ptr(U_NUL_DEF.as_ptr());
+            let split = split_nul_delimited_double_nul_terminated_ptr(U_NUL_DEF.as_ptr());
             assert_eq!(split.collect_vec(), &[&**UC_EMP, &**UC_DEF]);
         }
     }
