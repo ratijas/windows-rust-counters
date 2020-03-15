@@ -171,23 +171,16 @@ fn u8_as_u16_str(source: &[u8]) -> &U16Str {
 
 fn parse_performance_text_pairs(raw: &[u8]) -> Vec<(usize, String)> {
     let raw_u16str = u8_as_u16_str(raw.as_ref());
-    let pairs = parse_null_separated_key_value_pairs(raw_u16str.as_slice());
+    let pairs = parse_null_separated_key_value_pairs(raw_u16str);
     pairs
 }
 
-fn parse_null_separated_key_value_pairs(raw: &[u16]) -> Vec<(usize, String)> {
-    // string is double-null terminated
-    assert_eq!(&raw[raw.len() - 2..], &[0, 0]);
-    // strip extra nulls
-    let raw = &raw[..raw.len() - 2];
-
+fn parse_null_separated_key_value_pairs(raw: &U16Str) -> Vec<(usize, String)> {
     let mut vec = Vec::new();
 
     for (index, value)
-    in raw
-        .split(|&wchar| wchar == 0)
-        .map(U16Str::from_slice)
-        .tuples::<(&U16Str, &U16Str)>()
+    in crate::format::split_nul_delimited_double_nul_terminated(raw)
+        .tuples::<(&U16CStr, &U16CStr)>()
         .skip(1) // drop useless header with total count
     {
         let index = match index

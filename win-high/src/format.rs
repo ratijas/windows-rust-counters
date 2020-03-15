@@ -36,7 +36,7 @@ pub unsafe fn split_nul_delimited_double_nul_terminated_ptr<'a, C: UChar>(
 pub fn split_nul_delimited_double_nul_terminated<S, C: UChar>(
     buf: &S
 ) -> NullDelimitedDoubleNullTerminated<C>
-    where S: AsRef<UStr<C>>
+    where S: AsRef<UStr<C>> + ?Sized
 {
     let slice = buf.as_ref().as_slice();
     assert!(slice.ends_with(&[C::NUL; 2]), "slice must be terminated with double-nul");
