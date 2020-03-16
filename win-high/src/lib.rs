@@ -1,4 +1,6 @@
 //! # Various Rusty wrappers for low-level winapi
+#[macro_use]
+extern crate bitflags;
 #[cfg(test)]
 #[macro_use]
 extern crate lazy_static;
