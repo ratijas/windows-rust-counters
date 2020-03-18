@@ -236,6 +236,10 @@ impl CounterTypeDefinition {
 
 // from_raw/from_raw_unchecked/into_raw implementations for CounterTypeDefinition components
 mod imp {
+    use std::convert::TryFrom;
+
+    use crate::perf::nom::PerfCounterDefinition;
+
     use super::*;
 
     impl CounterTypeMask {
@@ -449,6 +453,14 @@ mod imp {
         #[inline(always)]
         pub const fn into_raw(self) -> DWORD {
             self as _
+        }
+    }
+
+    impl<'a> TryFrom<&PerfCounterDefinition<'a>> for CounterTypeDefinition {
+        type Error = ();
+
+        fn try_from(counter: &PerfCounterDefinition<'a>) -> Result<Self, Self::Error> {
+            Self::from_raw(counter.raw.CounterType).ok_or(())
         }
     }
 

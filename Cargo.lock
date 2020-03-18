@@ -99,7 +99,6 @@ dependencies = [
  "morse-stream",
  "quote",
  "signal-flow",
- "utf16_literal",
  "win-high",
  "win-low",
  "winapi 0.3.8",
@@ -302,12 +301,6 @@ name = "unicode-xid"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "826e7639553986605ec5979c7dd957c7895e93eabed50ab2ffa7f6128a75097c"
-
-[[package]]
-name = "utf16_literal"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3e7e6348363bdf9d0ae344c1379792f86fd03adc6637df99f29e51b717147ae2"
 
 [[package]]
 name = "vec_map"
