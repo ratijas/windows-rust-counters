@@ -1,14 +1,8 @@
 //! Nom parsers for performance data structures
 use std::mem;
 
-use nom::{
-    bytes::complete,
-    Err, IResult, Needed,
-    ToUsize,
-    InputTake, InputIter,
-};
-use nom::combinator::*;
-use nom::error::{ErrorKind, ParseError};
+use nom::{Err, IResult, Needed, ToUsize};
+use nom::error::ErrorKind;
 
 use win_low::winperf::*;
 
