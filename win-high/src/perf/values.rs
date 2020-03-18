@@ -27,15 +27,15 @@ impl<'b> CounterValue<'b> {
     }
 }
 
-pub fn get_slice<'a, 'b>(def: &'a PerfCounterDefinition, block: &'b PerfCounterBlock) -> &'b [u8] {
+pub fn get_slice<'a, 'b>(def: &'a PerfCounterDefinition, block: &'b PerfCounterBlock) -> Option<&'b [u8]> {
     let len = def.raw.CounterSize as usize;
     let offset = def.raw.CounterOffset as usize;
-    &block.data()[offset..offset + len]
+    block.data().get(offset..offset + len)
 }
 
 fn get_value<'a, 'b>(def: &'a PerfCounterDefinition, block: &'b PerfCounterBlock) -> Result<CounterValue<'b>, ValueError> {
     let typ = CounterTypeDefinition::try_from(def).expect("counter");
-    let mut slice = get_slice(def, block);
+    let mut slice = get_slice(def, block).ok_or(ValueError::BadSize)?;
     let value = unsafe {
         match typ.size() {
             Size::Dword => {
