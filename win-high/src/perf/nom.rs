@@ -41,7 +41,7 @@ pub struct PerfInstanceDefinition<'a> {
 
 #[derive(Clone)]
 pub struct PerfCounterBlock<'a> {
-    raw: &'a PERF_COUNTER_BLOCK,
+    pub raw: &'a PERF_COUNTER_BLOCK,
 }
 
 /// This is an extension to support both global and multi-instance counters.
@@ -202,6 +202,52 @@ pub unsafe fn view<T>(input: &[u8]) -> IResult<&[u8], &[T]> {
     Ok((empty, slice_t))
 }
 
+mod imp_deref {
+    use std::ops::Deref;
+
+    use super::*;
+
+    impl<'a> Deref for PerfDataBlock<'a> {
+        type Target = PERF_DATA_BLOCK;
+
+        fn deref(&self) -> &Self::Target {
+            self.raw
+        }
+    }
+
+    impl<'a> Deref for PerfObjectType<'a> {
+        type Target = PERF_OBJECT_TYPE;
+
+        fn deref(&self) -> &Self::Target {
+            self.raw
+        }
+    }
+
+    impl<'a> Deref for PerfCounterDefinition<'a> {
+        type Target = PERF_COUNTER_DEFINITION;
+
+        fn deref(&self) -> &Self::Target {
+            self.raw
+        }
+    }
+
+    impl<'a> Deref for PerfInstanceDefinition<'a> {
+        type Target = PERF_INSTANCE_DEFINITION;
+
+        fn deref(&self) -> &Self::Target {
+            self.raw
+        }
+    }
+
+    impl<'a> Deref for PerfCounterBlock<'a> {
+        type Target = PERF_COUNTER_BLOCK;
+
+        fn deref(&self) -> &Self::Target {
+            self.raw
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -226,7 +272,7 @@ mod test {
                     .expect("Processes counter");
                 let res = CounterValue::try_get(processes_counter, block);
                 assert_eq!(res, Ok(CounterValue::Dword(201)));
-            },
+            }
             _ => panic!("should be an object without instances"),
         }
     }
