@@ -2,6 +2,7 @@
 members = [
     "signal-flow",
     "morse-stream",
+    "rtsm-proto",
     "win-low",
     "win-high",
     "windows-examples/provide-counters",

@@ -224,6 +224,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "rtsm-proto"
+version = "0.1.0"
+dependencies = [
+ "morse-stream",
+]
+
+[[package]]
 name = "rustc_version"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
