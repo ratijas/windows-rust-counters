@@ -117,6 +117,21 @@ impl<T> RtsmProto<T>
             }
         }
     }
+
+    /// Decode the whole signal at once, or fail at first erroneous value.
+    pub fn decode_all(&mut self, values: &[T]) -> Result<Vec<Signal>, T> {
+        values.iter()
+            .cloned()
+            .map(|v| self.decode(v))
+            .filter_map(|res|
+                // Result<Option<T>, E> -> Option<Result<T, E>>
+                match res {
+                    Ok(None) => None,
+                    Ok(Some(signal)) => Some(Ok(signal)),
+                    Err(e) => Some(Err(e)),
+                }
+            ).collect()
+    }
 }
 
 macro_rules! imp_signal_value {
@@ -163,13 +178,17 @@ mod test {
     #[test]
     fn test_decode() {
         let mut p = RtsmProto::new(50..52, 0..3);
-        let res = VALUES.iter().cloned().map(|v| p.decode(v)).filter_map(|res|
-            match res {
-                Ok(None) => None,
-                Ok(Some(signal)) => Some(Ok(signal)),
-                Err(e) => Some(Err(e)),
-            }
-        ).collect::<Result<Vec<_>, _>>();
-        assert_eq!(res.unwrap(), SIGNAL);
+        let res = p.decode_all(VALUES);
+        assert_eq!(res.as_ref().map(Vec::as_slice), Ok(SIGNAL));
+    }
+
+    #[test]
+    fn test_deduplication() {
+        const VALUES: &'static [i32] = &[11, 11, 12, 13, 13, 13, 11];
+        const SIGNAL: &'static [Signal] = &[ON, ON, ON, ON];
+
+        let mut p = RtsmProto::new(10..20, 0..10);
+        let res = p.decode_all(VALUES);
+        assert_eq!(res.as_ref().map(Vec::as_slice), Ok(SIGNAL));
     }
 }
