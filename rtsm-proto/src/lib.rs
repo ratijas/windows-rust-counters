@@ -25,10 +25,10 @@ pub const OFF: Signal = false;
 /// value represents at most one byte of the underlying data stream, so the
 /// smalled it is, the better.
 pub struct RtsmProto<T> {
-    on: Range<T>,
     off: Range<T>,
-    on_current: T,
+    on: Range<T>,
     off_current: T,
+    on_current: T,
     current: Option<(Signal, T)>,
 }
 
@@ -39,13 +39,13 @@ pub trait SignalValue: Clone + Eq + PartialOrd<Self> {
 impl<T> RtsmProto<T>
     where T: SignalValue
 {
-    pub fn new(on: Range<T>, off: Range<T>) -> Self {
+    pub fn new(off: Range<T>, on: Range<T>) -> Self {
         RtsmProto {
             current: None,
-            on_current: on.start.clone(),
             off_current: off.start.clone(),
-            on,
+            on_current: on.start.clone(),
             off,
+            on,
         }
     }
 
@@ -60,8 +60,8 @@ impl<T> RtsmProto<T>
 
     fn pair_for_signal(&mut self, signal: Signal) -> (Range<T>, &mut T) {
         match signal {
-            ON => ((self.on.clone(), &mut self.on_current)),
             OFF => ((self.off.clone(), &mut self.off_current)),
+            ON => ((self.on.clone(), &mut self.on_current)),
         }
     }
 
@@ -87,10 +87,10 @@ impl<T> RtsmProto<T>
     }
 
     fn signal_for_value(&self, value: T) -> Result<Signal, ()> {
-        if self.on.contains(&value) {
-            Ok(ON)
-        } else if self.off.contains(&value) {
+        if self.off.contains(&value) {
             Ok(OFF)
+        } else if self.on.contains(&value) {
+            Ok(ON)
         } else {
             Err(())
         }
@@ -152,7 +152,7 @@ imp_signal_value!(u8, u16, u32, u64, usize, i8, i16, i32, i64, isize);
 
 impl Default for RtsmProto<i32> {
     fn default() -> Self {
-        RtsmProto::new(60..90, 10..40)
+        RtsmProto::new(10..40, 60..90)
     }
 }
 
@@ -168,7 +168,7 @@ mod test {
     fn test_encode() {
         // off: 50, 51
         // on: 0, 1, 2
-        let mut p = RtsmProto::new(50..52, 0..3);
+        let mut p = RtsmProto::new(0..3, 50..52);
         let encoded = iter::once(p.value()).chain(
             SIGNAL.iter().cloned().map(|s| p.encode(s))
         ).collect::<Vec<_>>();
@@ -177,7 +177,7 @@ mod test {
 
     #[test]
     fn test_decode() {
-        let mut p = RtsmProto::new(50..52, 0..3);
+        let mut p = RtsmProto::new(0..3, 50..52);
         let res = p.decode_all(VALUES);
         assert_eq!(res.as_ref().map(Vec::as_slice), Ok(SIGNAL));
     }
@@ -187,7 +187,7 @@ mod test {
         const VALUES: &'static [i32] = &[11, 11, 12, 13, 13, 13, 11];
         const SIGNAL: &'static [Signal] = &[ON, ON, ON, ON];
 
-        let mut p = RtsmProto::new(10..20, 0..10);
+        let mut p = RtsmProto::new(0..10, 10..20);
         let res = p.decode_all(VALUES);
         assert_eq!(res.as_ref().map(Vec::as_slice), Ok(SIGNAL));
     }
