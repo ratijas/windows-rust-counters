@@ -30,14 +30,14 @@ pub trait SignalValue: Clone + Eq + PartialOrd<Self> + Sub<Output=Self> {
     fn wrapping_next(&self, range: &Range<Self>) -> Self;
 }
 
-/// Ratijas slow-mode protocol transmitter.
+/// RTSM-proto (Ratijas Slow-Mode Protocol) transmitter.
 ///
 /// Give it a signal, and it will encode that signal into value `T` and send
 /// `T` down the pipeline.
-pub struct RtsmTx<X, T> {
+pub struct RtsmTx<X: Tx> {
     tx: X,
-    off: RangeValue<T>,
-    on: RangeValue<T>,
+    off: RangeValue<X::Item>,
+    on: RangeValue<X::Item>,
     current: Option<Signal>,
 }
 
@@ -116,12 +116,10 @@ mod imp {
 
     imp_signal_value!(u8, u16, u32, u64, usize, i8, i16, i32, i64, isize);
 
-    impl<X, T> RtsmTx<X, T>
-        where
-            X: Tx<Item=T>,
-            T: SignalValue,
+    impl<X: Tx> RtsmTx<X>
+        where X::Item: SignalValue
     {
-        pub fn new(ranges: RtsmRanges<T>, tx: X) -> Self {
+        pub fn new(ranges: RtsmRanges<X::Item>, tx: X) -> Self {
             RtsmTx {
                 tx,
                 off: RangeValue::from(ranges.off),
@@ -130,7 +128,7 @@ mod imp {
             }
         }
 
-        fn ranges_for_signal(&mut self, signal: Signal) -> &mut RangeValue<T> {
+        fn ranges_for_signal(&mut self, signal: Signal) -> &mut RangeValue<X::Item> {
             match signal {
                 OFF => &mut self.off,
                 ON => &mut self.on,
@@ -139,9 +137,9 @@ mod imp {
 
         // increment current value for range to which the signal belongs to.
         // it does not write the overall current value of self.
-        fn increment_range_if_needed(&mut self, signal: Signal) -> T {
+        fn increment_range_if_needed(&mut self, signal: Signal) -> X::Item {
             // cache current_signal to satisfy borrow checker.
-            let current = self.current.clone();
+            let current = self.current;
             let RangeValue { ref range, value } = self.ranges_for_signal(signal);
             // increment only if signal stays at the same value
             if let Some(current_signal) = current {
@@ -152,17 +150,15 @@ mod imp {
             value.clone()
         }
 
-        fn encode(&mut self, signal: Signal) -> T {
+        fn encode(&mut self, signal: Signal) -> X::Item {
             let value = self.increment_range_if_needed(signal);
             self.current = Some(signal);
             value
         }
     }
 
-    impl<X, T> Tx for RtsmTx<X, T>
-        where
-            X: Tx<Item=T>,
-            T: SignalValue,
+    impl<X: Tx> Tx for RtsmTx<X>
+        where X::Item: SignalValue
     {
         type Item = Signal;
 
@@ -189,7 +185,7 @@ mod test {
 
     #[test]
     fn test_rtsm_tx() {
-        let (send, mut recv) = pair();
+        let (send, recv) = pair();
 
         let ranges = RtsmRanges::new(0..10, 20..30).unwrap();
         let mut tx = RtsmTx::new(ranges, send);
