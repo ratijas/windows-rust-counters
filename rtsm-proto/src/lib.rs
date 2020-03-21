@@ -32,7 +32,9 @@ pub struct RtsmProto<T> {
     current: Option<(Signal, T)>,
 }
 
+/// Helper trait for type of values on which `RtsmProto` operates.
 pub trait SignalValue: Clone + Eq + PartialOrd<Self> {
+    /// `self + 1` wrapped around the bounds of the given range.
     fn wrapping_next(&self, range: Range<Self>) -> Self;
 }
 
