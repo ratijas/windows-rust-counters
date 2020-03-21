@@ -11,12 +11,18 @@ crate-type = ["cdylib"]
 [dependencies]
 
 hexyl = "*"
+# temporary workaround.  at the time of writing, 1.0.3 just came out and broke the build.
+quote = "=1.0.1"
 
 [target.'cfg(windows)'.dependencies]
 win-high = { path = "../../win-high" }
 win-low = { path = "../../win-low" }
-# temporary workaround.  at the time of writing, 1.0.3 just came out and broke the build.
-quote = "=1.0.1"
+[target.'cfg(windows)'.dependencies.winapi]
+version = "0.3"
+features = [
+    "winnt",
+    "winuser",
+]
 
 [build-dependencies]
 cargo-emit = "0.1"
