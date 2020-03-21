@@ -29,6 +29,10 @@ pub trait Rx {
     fn collect<B: FromIterator<Self::Item>>(self) -> Result<B, Box<dyn Error>> where Self: Sized {
         RxIteratorAdapter::new(self).collect()
     }
+
+    fn collect_vec(self) -> Result<Vec<Self::Item>, Box<dyn Error>> where Self: Sized {
+        self.collect()
+    }
 }
 
 
