@@ -6,6 +6,7 @@ members = [
     "win-low",
     "win-high",
     "windows-examples/provide-counters",
+    "windows-examples/provide-morse-counter",
     "windows-examples-container",
 ]
 
