@@ -8,3 +8,13 @@ members = [
     "windows-examples/provide-counters",
     "windows-examples-container",
 ]
+
+# exclude crates with crate_type = "cdylib"
+default-members = [
+    "signal-flow",
+    "morse-stream",
+    "win-low",
+    "win-high",
+    "windows-examples/provide-counters",
+    "windows-examples-container",
+]
