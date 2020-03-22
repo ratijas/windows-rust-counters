@@ -4,7 +4,7 @@ pub use crate::rx::*;
 pub use crate::tx::*;
 
 mod interval;
-mod pair;
-mod tx;
-mod rx;
+pub mod pair;
+pub mod tx;
+pub mod rx;
 pub mod rtsm;
