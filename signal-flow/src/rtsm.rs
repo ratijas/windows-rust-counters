@@ -52,6 +52,28 @@ pub struct RtsmRx<X: Rx> {
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub struct DecodeError<T>(pub T);
 
+pub trait RtsmTxExt: Tx {
+    fn rtsm(self, ranges: RtsmRanges<Self::Item>) -> RtsmTx<Self>
+        where Self: Sized,
+              Self::Item: SignalValue
+    {
+        RtsmTx::new(ranges, self)
+    }
+}
+
+impl<X> RtsmTxExt for X where X: Tx {}
+
+pub trait RtsmRxExt: Rx {
+    fn rtsm(self, ranges: RtsmRanges<Self::Item>) -> RtsmRx<Self>
+        where Self: Sized,
+              Self::Item: SignalValue
+    {
+        RtsmRx::new(ranges, self)
+    }
+}
+
+impl<X> RtsmRxExt for X where X: Rx {}
+
 mod imp {
     use super::*;
     use std::error::Error;
