@@ -6,7 +6,7 @@ use signal_flow::*;
 
 fn main() {
     println!("Morse message:");
-    let seq = EncoderTx::<ITU>::encode_str("SOS");
+    let seq = EncoderTx::<ITU, _>::encode_str("SOS");
     for bit in seq {
         print!("{}", if bit { '-' } else { ' ' });
     }

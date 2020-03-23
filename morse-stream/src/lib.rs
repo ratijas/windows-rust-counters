@@ -102,7 +102,7 @@ pub trait Dialect: Clone + Debug + Default {
             .map(|(char, _)| *char)
     }
 
-    fn encoder<'a, T: Tx<Item=Signal> + 'a>(tx: T) -> EncoderTx<'a, Self> {
+    fn encoder<X: Tx<Item=Signal>>(tx: X) -> EncoderTx<Self, X> {
         EncoderTx::new(tx)
     }
 }
@@ -187,20 +187,20 @@ impl Dialect for ITU {
 ///////////////////////////////////////////////
 
 
-pub struct EncoderTx<'a, D> {
+pub struct EncoderTx<D, X> {
     dialect: D,
-    tx: Box<dyn Tx<Item=Signal> + 'a>,
+    tx: X,
     /// How long is the current pause?
     pause_duration: u8,
     /// How much of the pause is already written?
     pause_written: u8,
 }
 
-impl<'a, D: Dialect> EncoderTx<'a, D> {
-    pub fn new<T: Tx<Item=Signal> + 'a>(tx: T) -> Self {
+impl<D: Dialect, X: Tx<Item=Signal>> EncoderTx<D, X> {
+    pub fn new(tx: X) -> Self {
         EncoderTx {
             dialect: Default::default(),
-            tx: Box::new(tx),
+            tx,
             pause_duration: 0,
             pause_written: 0,
         }
@@ -287,12 +287,12 @@ impl<'a, D: Dialect> EncoderTx<'a, D> {
     }
 }
 
-impl<'a, D: Dialect> EncoderTx<'a, D> {
+impl<D: Dialect> EncoderTx<D, ()> {
     /// Encode string with Morse code, producing a sequence of on/off signal states.
     pub fn encode_str<S: AsRef<str>>(s: S) -> Vec<Signal> {
         let mut buffer = Vec::new();
 
-        let mut coder = EncoderTx::<D>::new(VecCollectorTx::new(&mut buffer));
+        let mut coder = EncoderTx::<D, _>::new(VecCollectorTx::new(&mut buffer));
         for char in s.as_ref().chars() {
             coder.send_char(char).unwrap();
         }
@@ -302,7 +302,7 @@ impl<'a, D: Dialect> EncoderTx<'a, D> {
     }
 }
 
-impl<'a, D: Dialect> Tx for EncoderTx<'a, D> {
+impl<D: Dialect, X: Tx<Item=Signal>> Tx for EncoderTx<D, X> {
     type Item = char;
 
     fn send(&mut self, value: Self::Item) -> Result<(), Box<dyn Error>> {
@@ -589,9 +589,18 @@ impl<D: Dialect, X: Rx<Item=Signal>> Rx for DecoderRx<D, X> {
 
 
 ///////////////////////////////////////////////
-///////////////////  Rx Ext ///////////////////
+////////////////// Tx/Rx Ext //////////////////
 ///////////////////////////////////////////////
 
+pub trait MorseTxExt: Tx<Item=Signal> {
+    fn morse_encode<D: Dialect>(self) -> EncoderTx<D, Self>
+        where Self: Sized
+    {
+        EncoderTx::new(self)
+    }
+}
+
+impl<X: Tx<Item=Signal>> MorseTxExt for X {}
 
 pub trait MorseRxExt {
     fn morse_decode<D: Dialect>(self) -> DecoderRx<D, Self>
@@ -638,7 +647,7 @@ mod test {
         let mut buffer = Vec::new();
         ITU::encoder(VecCollectorTx::new(&mut buffer));
 
-        assert_eq!(EncoderTx::<ITU>::encode_str("SOS"), vec![
+        assert_eq!(EncoderTx::<ITU, _>::encode_str("SOS"), vec![
             ON, OFF, ON, OFF, ON, // S: · · ·
             OFF, OFF, OFF, // letter space
             ON, ON, ON, OFF, ON, ON, ON, OFF, ON, ON, ON, // O: − − −
@@ -650,7 +659,7 @@ mod test {
 
     #[test]
     fn test_whitespace() {
-        assert_eq!(EncoderTx::<ITU>::encode_str("a b"), A_B.to_owned());
+        assert_eq!(EncoderTx::<ITU, _>::encode_str("a b"), A_B.to_owned());
     }
 
     #[test]

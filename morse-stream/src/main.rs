@@ -103,7 +103,7 @@ fn main() {
 
     match role {
         Role::Encoder => {
-            let mut encoder = EncoderTx::<ITU>::new(
+            let mut encoder = EncoderTx::<ITU, _>::new(
                 SignalToAsciiTx::new(
                     CustomTx::new(|char| {
                         let stdout = std::io::stdout();
