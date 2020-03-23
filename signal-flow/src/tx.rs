@@ -1,5 +1,8 @@
 use std::error::Error;
+use std::fmt;
 use std::marker::PhantomData;
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 
 use super::*;
@@ -10,16 +13,14 @@ pub trait Tx {
     /// Blocking send value.
     fn send(&mut self, value: Self::Item) -> Result<(), Box<dyn Error>>;
 
-    // fn deduplicate(self) -> DeDuplicator<Self> where Self: Sized {
-    //     DeDuplicator::new(self)
-    // }
-    //
-    // fn fuse(self) -> FuseRx<Self> where Self: Sized {
-    //     FuseRx::new(self)
-    // }
-
     fn interval(self, rate: Duration) -> Interval<Self, IntervalRoleTx> where Self: Sized {
         Interval::new(self, rate)
+    }
+
+    fn cancel_on(self, cancellation_token: Arc<AtomicBool>) -> CancellableTx<Self>
+        where Self: Sized
+    {
+        CancellableTx::new(cancellation_token, self)
     }
 }
 
@@ -114,6 +115,53 @@ impl<'a, T> Tx for VecCollectorTx<'a, T> {
     }
 }
 
+////////////////////////////////////////////////
+//////////////////// Custom ////////////////////
+////////////////////////////////////////////////
+
+/// Passes values through unless `cancellation_token` (AtomicBool) is set to true,
+/// in which case it returns an error.
+pub struct CancellableTx<X> {
+    tx: X,
+    cancellation_token: Arc<AtomicBool>,
+}
+
+/// Specific error to indicate that Rx chain was cancelled by cancellation token.
+#[derive(Debug)]
+pub struct CancelledError;
+
+impl<X> CancellableTx<X> {
+    pub fn new(cancellation_token: Arc<AtomicBool>, tx: X) -> Self {
+        CancellableTx {
+            tx,
+            cancellation_token,
+        }
+    }
+}
+
+impl<X: Tx> Tx for CancellableTx<X> {
+    type Item = X::Item;
+
+    fn send(&mut self, value: Self::Item) -> Result<(), Box<dyn Error>> {
+        if self.cancellation_token.load(std::sync::atomic::Ordering::Relaxed) {
+            Err(Box::new(CancelledError))
+        } else {
+            self.tx.send(value)
+        }
+    }
+}
+
+impl fmt::Display for CancelledError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        "Tx was cancelled (via shared AtomicBool)".fmt(f)
+    }
+}
+
+impl std::error::Error for CancelledError {
+    fn description(&self) -> &str {
+        "Tx was cancelled (via shared AtomicBool)"
+    }
+}
 
 ////////////////////////////////////////////////
 //////////////////// Custom ////////////////////
