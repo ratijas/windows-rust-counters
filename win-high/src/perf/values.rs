@@ -25,6 +25,34 @@ impl<'b> CounterValue<'b> {
     pub fn try_get<'a>(def: &'a PerfCounterDefinition, block: &'b PerfCounterBlock) -> Result<Self, ValueError> {
         get_value(def, block)
     }
+
+    pub fn write(&self, buffer: &mut [u8]) -> Result<(), ValueError> {
+        fn checked_write(src: &[u8], dst: &mut [u8]) -> Result<(), ValueError> {
+            if src.len() != dst.len() {
+                return Err(ValueError::BadSize);
+            }
+            dst.copy_from_slice(src);
+            Ok(())
+        }
+        unsafe {
+            match self {
+                CounterValue::Dword(dword) => {
+                    let slice = &[dword];
+                    let source = downcast(slice);
+                    checked_write(source, buffer)?;
+                }
+                CounterValue::Large(large) => {
+                    let slice = &[large];
+                    let source = downcast(slice);
+                    checked_write(source, buffer)?;
+                }
+                CounterValue::TextUnicode(_) => panic!("not supported"),
+                CounterValue::TextAscii(_) => panic!("not supported"),
+                CounterValue::Zero => checked_write(&[], buffer)?,
+            }
+        }
+        Ok(())
+    }
 }
 
 pub fn get_slice<'a, 'b>(def: &'a PerfCounterDefinition, block: &'b PerfCounterBlock) -> Option<&'b [u8]> {

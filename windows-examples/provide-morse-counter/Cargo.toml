@@ -10,9 +10,13 @@ crate-type = ["cdylib"]
 
 [dependencies]
 
+figlet-rs = "0.1.3"
 hexyl = "*"
+lazy_static = "1"
 # temporary workaround.  at the time of writing, 1.0.3 just came out and broke the build.
 quote = "=1.0.1"
+morse-stream = { path = "../../morse-stream" }
+signal-flow = { path = "../../signal-flow" }
 
 [target.'cfg(windows)'.dependencies]
 win-high = { path = "../../win-high" }
@@ -27,3 +31,4 @@ features = [
 [build-dependencies]
 cargo-emit = "0.1"
 path-slash = "0.1"
+regex = "1"

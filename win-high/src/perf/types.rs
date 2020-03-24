@@ -164,6 +164,28 @@ pub enum DisplayFlags {
     NoShow = PERF_DISPLAY_NOSHOW,
 }
 
+///  The following are used to determine the level of detail associated
+///  with the counter.  The user will be setting the level of detail
+///  that should be displayed at any given time.
+#[repr(u32)]
+#[derive(Copy, Clone, Debug)]
+pub enum DetailLevel {
+    /// The uninformed can understand it
+    Novice = PERF_DETAIL_NOVICE,
+    /// For the advanced user
+    Advanced = PERF_DETAIL_ADVANCED,
+    /// For the expert user
+    Expert = PERF_DETAIL_EXPERT,
+    /// For the system designer
+    Wizard = PERF_DETAIL_WIZARD,
+}
+
+impl Default for DetailLevel {
+    fn default() -> Self {
+        DetailLevel::Novice
+    }
+}
+
 impl CounterTypeDefinition {
     pub fn new(
         size: Size,
@@ -259,6 +281,16 @@ mod imp {
         #[inline(always)]
         pub const fn into_raw(self) -> DWORD {
             self as _
+        }
+
+        pub fn size_of(self) -> Option<usize> {
+            use std::mem::size_of;
+            match self {
+                Size::Dword => Some(size_of::<DWORD>()),
+                Size::Large => Some(size_of::<DWORD>() * 2),
+                Size::Zero => Some(0),
+                Size::Var => None,
+            }
         }
     }
 
