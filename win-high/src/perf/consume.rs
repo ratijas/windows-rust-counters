@@ -6,6 +6,7 @@ use winapi::um::sysinfoapi::*;
 use winapi::um::winnls::*;
 
 use crate::prelude::v1::*;
+use winapi::um::winnt::{OSVERSIONINFOW};
 
 /// Translated function `GetLanguageId` from [MSDN].
 ///
