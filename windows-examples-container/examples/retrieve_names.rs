@@ -6,7 +6,7 @@ fn main() {
     do_local_counters(UseLocale::English, Some(3));
 
     println!("Default UI locale:");
-    do_local_counters(UseLocale::UIDefault, Some(3));
+    do_local_counters(UseLocale::UIDefault, None);
 
     println!("Current language ID as custom LANGID :");
     let lang_id = get_language_id().expect("GetLanguageId");
