@@ -164,12 +164,16 @@ fn no_zst<T>() {
     }
 }
 
-// maybe someday it will come in handy
-#[allow(unused)]
-unsafe fn downcast<T>(input: &[T]) -> &[u8] {
+pub unsafe fn downcast<T>(input: &[T]) -> &[u8] {
     no_zst::<T>();
     let len = input.len() * mem::size_of::<T>();
-    std::slice::from_raw_parts(input.as_ptr() as *const u8, len)
+    std::slice::from_raw_parts(input.as_ptr().cast(), len)
+}
+
+pub unsafe fn downcast_mut<T>(input: &mut [T]) -> &mut [u8] {
+    no_zst::<T>();
+    let len = input.len() * mem::size_of::<T>();
+    std::slice::from_raw_parts_mut(input.as_mut_ptr().cast(), len)
 }
 
 /// Error value is the remainder of a division of length by size of `T`.
@@ -180,7 +184,18 @@ pub unsafe fn upcast<T>(input: &[u8]) -> Result<&[T], usize> {
     if rem != 0 {
         return Err(rem);
     }
-    Ok(std::slice::from_raw_parts(input.as_ptr() as *const T, len))
+    Ok(std::slice::from_raw_parts(input.as_ptr().cast(), len))
+}
+
+/// Error value is the remainder of a division of length by size of `T`.
+pub unsafe fn upcast_mut<T>(input: &mut [u8]) -> Result<&mut [T], usize> {
+    no_zst::<T>();
+    let len = input.len() / mem::size_of::<T>();
+    let rem = input.len() % mem::size_of::<T>();
+    if rem != 0 {
+        return Err(rem);
+    }
+    Ok(std::slice::from_raw_parts_mut(input.as_mut_ptr().cast(), len))
 }
 
 /// Consumes all the input, transmutes input as a slice of `T`.
