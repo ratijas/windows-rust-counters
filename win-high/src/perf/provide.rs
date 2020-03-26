@@ -2,7 +2,7 @@
 #![allow(non_snake_case)]
 
 use std::error::Error;
-use std::mem::size_of;
+use std::mem::{align_of, size_of};
 use std::str::FromStr;
 use std::cell::RefCell;
 
@@ -336,7 +336,7 @@ impl PerfObjectTypeTemplate {
 
         let header_length = size_of::<PERF_OBJECT_TYPE>();
         let definition_length = header_length + counters_length;
-        let total = dword_multiple(definition_length + instances_length + blocks_length);
+        let total = align_to::<PERF_OBJECT_TYPE>(definition_length + instances_length + blocks_length);
 
         PERF_OBJECT_TYPE {
             TotalByteLength: total as _,
@@ -431,6 +431,11 @@ impl PerfCounterDefinitionTemplate {
     }
 
     pub fn build_layout(&self, first_counter: DWORD, offset: DWORD) -> PERF_COUNTER_DEFINITION {
+        let counter_size = align_to_dword(
+            self.CounterSize
+                .expect("Cannot infer counter size. Set it manually via PerfCounterDefinitionTemplate::with_size() method.")
+                as _
+        );
         PERF_COUNTER_DEFINITION {
             ByteLength: size_of::<PERF_COUNTER_DEFINITION>() as _,
             CounterNameTitleIndex: self.name_offset + first_counter,
@@ -440,7 +445,7 @@ impl PerfCounterDefinitionTemplate {
             DefaultScale: self.DefaultScale,
             DetailLevel: self.DetailLevel as _,
             CounterType: self.counter_type.into_raw(),
-            CounterSize: dword_multiple(self.CounterSize.expect("Cannot infer size. Please, set it manually") as _) as _,
+            CounterSize: counter_size as _,
             CounterOffset: offset as _,
         }
     }
@@ -481,11 +486,11 @@ impl<'a> PerfInstanceDefinitionTemplate<'a> {
 
     pub fn build_layout(&self) -> PERF_INSTANCE_DEFINITION {
         let struct_size = size_of::<PERF_INSTANCE_DEFINITION>();
-        // +1 for nul terminator
-        let name_size = (self.Name.len() + 1) * size_of::<DWORD>();
+        // including nul terminator
+        let name_size = self.Name.as_slice_with_nul().len() * size_of::<DWORD>();
 
         PERF_INSTANCE_DEFINITION {
-            ByteLength: dword_multiple(struct_size + name_size) as _,
+            ByteLength: align_to::<PERF_INSTANCE_DEFINITION>(struct_size + name_size) as _,
             ParentObjectTitleIndex: self.ParentObjectTitleIndex,
             ParentObjectInstance: self.ParentObjectInstance,
             UniqueID: self.UniqueID,
@@ -524,7 +529,7 @@ impl CountersBlockTemplate {
     }
 
     pub fn add_counter(&mut self, counter: PERF_COUNTER_DEFINITION) {
-        self.ByteLength += dword_multiple(counter.CounterSize as _) as DWORD;
+        self.ByteLength += align_to_dword(counter.CounterSize as _) as DWORD;
         self.counters.push(counter);
     }
 
@@ -591,9 +596,17 @@ impl FromStr for QueryType {
     }
 }
 
-fn dword_multiple(of: usize) -> usize {
-    let size = size_of::<DWORD>();
-    ((of + size - 1) / size) * size
+/// Bump the `size` up to be a closest multiple of given type's alignment.
+/// No-op if the `size` is already divisible by alignment of type.
+fn align_to<T>(size: usize) -> usize {
+    let align = align_of::<T>();
+    assert_ne!(align, 0);
+    ((size + align - 1) / align) * align
+}
+
+/// See [`align_to`](fn.align_to.html).
+fn align_to_dword(size: usize) -> usize {
+    align_to::<DWORD>(size)
 }
 
 fn layout_of_counters(first_counter: DWORD, templates: &[PerfCounterDefinitionTemplate]) -> CountersBlockTemplate {
@@ -699,6 +712,18 @@ mod test {
                 _ => unimplemented!()
             }
         }
+    }
+
+    #[test]
+    fn test_align() {
+        assert_eq!(align_of::<DWORD>(), size_of::<DWORD>());
+        assert_eq!(align_to_dword(0), 0);
+        // smallest
+        assert_eq!(align_to_dword(1), size_of::<DWORD>());
+        // identity
+        assert_eq!(align_to_dword(size_of::<DWORD>()), size_of::<DWORD>());
+        // smalest on a bigger type
+        assert_eq!(align_to::<PERF_OBJECT_TYPE>(1), 8);
     }
 
     #[test]
