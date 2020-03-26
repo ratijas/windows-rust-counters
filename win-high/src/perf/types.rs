@@ -498,11 +498,13 @@ mod imp {
 
     impl Debug for CounterTypeDefinition {
         fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-            write!(f, "Size = {:?}; ", self.size())?;
-            write!(f, "Type = {:?}; ", self.counter_type())?;
-            write!(f, "Timer = {:?}; ", self.time_base())?;
-            write!(f, "Modifiers = {:?}; ", self.calculation_modifiers())?;
+            write!(f, "CounterTypeDefinition {{ ")?;
+            write!(f, "Size = {:?}, ", self.size())?;
+            write!(f, "Type = {:?}, ", self.counter_type())?;
+            write!(f, "Timer = {:?}, ", self.time_base())?;
+            write!(f, "Modifiers = {:?}, ", self.calculation_modifiers())?;
             write!(f, "Display = {:?}", self.display_flags())?;
+            write!(f, " }}")?;
             Ok(())
         }
     }
