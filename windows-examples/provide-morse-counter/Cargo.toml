@@ -13,6 +13,8 @@ crate-type = ["cdylib"]
 figlet-rs = "0.1.3"
 hexyl = "*"
 lazy_static = "1"
+log = "0.4"
+winlog = "*"
 # temporary workaround.  at the time of writing, 1.0.3 just came out and broke the build.
 quote = "=1.0.1"
 morse-stream = { path = "../../morse-stream" }

@@ -41,9 +41,9 @@ fn main() {
         print_perf_data(&perf_data, &meta);
     }
 
-    const SYSTEM_NAME_INDEX: DWORD = 2;
+    const SYSTEM_NAME_INDEX: DWORD = 11962;
     let counter_uptime_index: DWORD = meta.map().iter()
-        .find(|(_, counter)| counter.name_value.as_str() == "System Up Time")
+        .find(|(_, counter)| counter.name_value.as_str() == "SOS")
         .map(|(&index, _)| index as DWORD)
         .expect("Uptime counter name not found");
 
@@ -61,6 +61,11 @@ fn main() {
             .find(|obj| obj.ObjectNameTitleIndex == SYSTEM_NAME_INDEX)
             .expect("System object not found");
 
+        unsafe {
+            let slice = std::slice::from_raw_parts(obj_system.raw as *const PERF_OBJECT_TYPE as *const u8, obj_system.TotalByteLength as usize);
+            xxd( slice).expect("xxd");
+        }
+
         let counter_uptime = obj_system.counters.iter()
             .find(|counter| counter.CounterNameTitleIndex == counter_uptime_index)
             .expect("Uptime counter not found");
@@ -70,18 +75,22 @@ fn main() {
         // println!("ObjectType PerfTime: {:?}; FreqTime: {:?}", obj_system.PerfTime, obj_system.PerfFreq);
         if let PerfObjectData::Singleton(block) = &obj_system.data {
             xxd(block.data()).expect("xxd");
-            {
-                let raw = get_slice(counter_uptime, block).expect("get slice");
-                let mut bytes = [0u8; 8];
-                bytes.copy_from_slice(raw);
+            let value = CounterValue::try_get(counter_uptime, block).expect("get value");
+            println!("Value: {:?}", value);
+
+            // {
+            //     let raw = get_slice(counter_uptime, block).expect("get slice");
+            //     let mut bytes = [0u8; 4];
+            //     bytes.copy_from_slice(raw);
                 // println!("Uptime: Raw = {:?}; U64 = {:#0x}; F64 = {}", raw, u64::from_ne_bytes(bytes), f64::from_ne_bytes(bytes));
-            }
-            println!("GetTickCount: {}", unsafe { GetTickCount() });
-            let sample = unsafe { get_sample(&*perf_data, &*obj_system, &*counter_uptime, &*block) }
-                .expect("Get sample");
-            let display = display_calculated_value(&sample, None).expect("Display calculated value");
-            println!("Sample: {:?}", sample);
-            println!("Printed: {}", display);
+            // }
+            // println!("GetTickCount: {}", unsafe { GetTickCount() });
+
+            // let sample = unsafe { get_sample(&*perf_data, &*obj_system, &*counter_uptime, &*block) }
+            //     .expect("Get sample");
+            // let display = display_calculated_value(&sample, None).expect("Display calculated value");
+            // println!("Sample: {:?}", sample);
+            // println!("Printed: {}", display);
         }
     }
 }
@@ -130,7 +139,7 @@ fn do_get_values() -> WinResult<Vec<u8>> {
     // Retrieve counter data for the Processor object.
     let value = query_value(
         HKEY_PERFORMANCE_DATA,
-        "2",  // system uptime
+        "11962",  // system uptime
         Some(&mut typ),
         Some(2_000_000),
     )?;

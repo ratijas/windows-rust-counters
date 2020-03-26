@@ -4,6 +4,7 @@
 use std::error::Error;
 use std::mem::size_of;
 use std::str::FromStr;
+use std::cell::RefCell;
 
 use win_low::winperf::*;
 
@@ -12,30 +13,36 @@ use crate::perf::types::*;
 use crate::perf::values::CounterValue;
 use crate::prelude::v1::*;
 
+use winapi::um::winnt::KEY_READ;
+
 pub trait PerfProvider {
     fn service_name(&self, for_object: &PerfObjectTypeTemplate) -> &str;
 
-    fn first_counter(&self, for_object: &PerfObjectTypeTemplate) -> Result<DWORD, Box<dyn Error>> {
-        let hkey = RegConnectRegistryW_Safe(
-            null_mut(),
+    fn first_counter(&self, for_object: &PerfObjectTypeTemplate) -> WinResult<DWORD> {
+        let sub_key = format!(r"SYSTEM\CurrentControlSet\Services\{}\Performance", self.service_name(for_object));
+        let sub_key_wstr = U16CString::from_str(sub_key).map_err(|_| WinError::new(ERROR_INVALID_DATA))?;
+        let hkey = RegOpenKeyEx_Safe(
             HKEY_LOCAL_MACHINE,
+            sub_key_wstr.as_ptr(),
+            0,
+            KEY_READ,
         )?;
-        let path = format!(r"SYSTEM\CurrentControlSet\Services\{}\Performance\First Counter",
-                           self.service_name(for_object));
         let buffer = query_value(
             *hkey,
-            &path,
+            "First Counter",
             None,
             None,
         )?;
-        let first_counter = nom::number::complete::le_u32::<()>(&*buffer)?.1;
+        let first_counter = nom::number::complete::le_u32::<()>(&*buffer)
+            .map_err(|_| WinError::new(ERROR_INVALID_DATA))?
+            .1;
 
         Ok(first_counter)
     }
 
     fn objects(&self) -> &[PerfObjectTypeTemplate];
 
-    fn time_provider(&self, for_object: &PerfObjectTypeTemplate) -> &dyn PerfClockProvider;
+    fn time_provider(&self, for_object: &PerfObjectTypeTemplate) -> &dyn PerfTimeProvider;
 
     fn counters(&self, for_object: &PerfObjectTypeTemplate) -> &[PerfCounterDefinitionTemplate];
 
@@ -48,16 +55,17 @@ pub trait PerfProvider {
             now: PerfClock,
     ) -> CounterValue;
 
-    fn should_respond(&self, to_query: &QueryType, with_object: &PerfObjectTypeTemplate) -> bool {
-        match to_query {
+    fn should_respond(&self, to_query: &QueryType, with_object: &PerfObjectTypeTemplate) -> WinResult<bool> {
+        let answer = match to_query {
             QueryType::Global => true,
             QueryType::Items(items) => {
-                let base = self.first_counter(&with_object).unwrap();
+                let base = self.first_counter(&with_object)?;
                 let name_index = base + with_object.name_offset;
                 items.contains(&name_index)
             }
             _ => false,
-        }
+        };
+        Ok(answer)
     }
 
     fn collect_object<'a>(
@@ -65,15 +73,13 @@ pub trait PerfProvider {
         object_template: &PerfObjectTypeTemplate,
         now: PerfClock,
         mut buffer: &'a mut [u8],
-    ) -> Result<(usize, &'a mut [u8]), Box<dyn Error>>
+    ) -> WinResult<(usize, &'a mut [u8])>
     {
-        let mut total = 0;
-
         // build all headers and definitions before writing anything.
         // counters data will be requested at the very last step, when it is really needed.
         let first_counter = self.first_counter(object_template)?;
         let counter_templates = self.counters(object_template);
-        let counters_block_template = layout_of_counters(counter_templates);
+        let counters_block_template = layout_of_counters(first_counter, counter_templates);
         let counters = counters_block_template.counters();
         let instance_templates = self.instances(object_template);
         let instances = instance_templates.map(layout_of_instances);
@@ -86,18 +92,17 @@ pub trait PerfProvider {
         );
 
         // write header and counters definitions
+        let _ = write_object_struct_header(&object, buffer).map_err(error_small_buffer)?;
+        buffer = &mut buffer[object.HeaderLength as usize..];
 
-        let (i, rest) = write_object_struct_header(&object, buffer).map_err(error_small_buffer)?;
-        total += i;
-        buffer = rest;
-
-        let (i, rest) = write_counter_definitions(counters, buffer).map_err(error_small_buffer)?;
-        total += i;
-        buffer = rest;
+        for counter in counters {
+            let _ = write_counter_definition(counter, buffer).map_err(error_small_buffer)?;
+            buffer = &mut buffer[counter.ByteLength as usize..];
+        }
 
         if instances.is_none() {
             // no instances, single block
-            let (i, rest) = self.write_block(
+            let _ = self.write_block(
                 object_template,
                 None,
                 counter_templates,
@@ -105,18 +110,16 @@ pub trait PerfProvider {
                 now,
                 buffer,
             ).map_err(error_small_buffer)?;
-            total += i;
-            buffer = rest;
+            buffer = &mut buffer[counters_block_template.ByteLength as usize..];
         } else {
             let instance_templates = instance_templates.unwrap();
             let instances = instances.unwrap();
             for (instance, instance_template) in instances.iter().zip(instance_templates) {
                 // write instance
-                let (i, rest) = instance_template.write_with_layout(instance, buffer).map_err(error_small_buffer)?;
-                total += i;
-                buffer = rest;
+                let _ = instance_template.write_with_layout(instance, buffer).map_err(error_small_buffer)?;
+                buffer = &mut buffer[instance.ByteLength as usize..];
                 // write block
-                let (i, rest) = self.write_block(
+                let _ = self.write_block(
                     object_template,
                     Some(instance_template),
                     counter_templates,
@@ -124,11 +127,10 @@ pub trait PerfProvider {
                     now,
                     buffer,
                 ).map_err(error_small_buffer)?;
-                total += i;
-                buffer = rest;
+                buffer = &mut buffer[instance.ByteLength as usize..];
             }
         }
-        Ok((total, buffer))
+        Ok((object.TotalByteLength as _, buffer))
     }
 
     fn write_block<'a>(
@@ -152,18 +154,93 @@ pub trait PerfProvider {
         Ok((i, &mut buffer[i..]))
     }
 
-    fn collect<'a>(&self, query: QueryType, mut buffer: &'a mut [u8]) -> Result<(usize, &'a mut [u8]), Box<dyn Error>> {
-        let mut total: usize = 0;
+    fn collect(&self, query: QueryType, mut buffer: &mut [u8]) -> WinResult<Collected> {
+        let mut total_bytes: usize = 0;
+        let mut num_object_types = 0;
         for object in self.objects() {
-            if self.should_respond(&query, object) {
+            if self.should_respond(&query, object)? {
                 let now = self.time_provider(object).get_time();
                 let (length, rest) = self.collect_object(object, now, buffer)?;
-                total += length;
+                total_bytes += length;
                 buffer = rest;
+                num_object_types += 1;
             }
         }
-        Ok((total, buffer))
+        Ok(Collected {
+            total_bytes,
+            num_object_types,
+        })
     }
+}
+
+pub struct CachingPerfProvider<X> {
+    inner: X,
+    first_counters: RefCell<Vec<(DWORD, DWORD)>>,
+}
+
+impl<X> CachingPerfProvider<X> {
+    pub fn new(inner: X) -> Self {
+        Self {
+            inner,
+            first_counters: RefCell::new(vec![]),
+        }
+    }
+
+    fn lookup_first_counter(&self, name_offset: DWORD) -> Option<DWORD> {
+        self.first_counters.borrow().iter()
+            .find_map(|&(offset, base)| if offset == name_offset { Some(base) } else { None })
+    }
+
+    fn cache_first_counter(&self, name_offset: DWORD, first_counter: DWORD) {
+        self.first_counters.borrow_mut().push((name_offset, first_counter));
+    }
+}
+
+impl<X: PerfProvider> PerfProvider for CachingPerfProvider<X> {
+    // pass through implementation
+    fn service_name(&self, for_object: &PerfObjectTypeTemplate) -> &str {
+        self.inner.service_name(for_object)
+    }
+
+    // custom method
+    fn first_counter(&self, for_object: &PerfObjectTypeTemplate) -> WinResult<DWORD> {
+        if let Some(cached) = self.lookup_first_counter(for_object.name_offset) {
+            return Ok(cached);
+        } else {
+            let first_counter = self.inner.first_counter(for_object)?;
+            self.cache_first_counter(for_object.name_offset, first_counter);
+            Ok(first_counter)
+        }
+    }
+
+    fn objects(&self) -> &[PerfObjectTypeTemplate] {
+        self.inner.objects()
+    }
+
+    fn time_provider(&self, for_object: &PerfObjectTypeTemplate) -> &dyn PerfTimeProvider {
+        self.inner.time_provider(for_object)
+    }
+
+    fn counters(&self, for_object: &PerfObjectTypeTemplate) -> &[PerfCounterDefinitionTemplate] {
+        self.inner.counters(for_object)
+    }
+
+    fn instances(&self, for_object: &PerfObjectTypeTemplate) -> Option<&[PerfInstanceDefinitionTemplate]> {
+        self.inner.instances(for_object)
+    }
+
+    fn data(&self, for_object: &PerfObjectTypeTemplate, per_counter: &PerfCounterDefinitionTemplate, per_instance: Option<&PerfInstanceDefinitionTemplate>, now: PerfClock) -> CounterValue {
+        self.inner.data(for_object, per_counter, per_instance, now)
+    }
+
+    fn should_respond(&self, to_query: &QueryType, with_object: &PerfObjectTypeTemplate) -> WinResult<bool> {
+        self.inner.should_respond(to_query, with_object)
+    }
+}
+
+pub struct Collected {
+    pub total_bytes: usize,
+    pub num_object_types: usize,
 }
 
 #[derive(Copy, Clone)]
@@ -172,14 +249,27 @@ pub struct PerfClock {
     PerfFreq: LARGE_INTEGER,
 }
 
-pub trait PerfClockProvider {
+pub trait PerfTimeProvider {
     fn get_time(&self) -> PerfClock;
+}
+
+pub struct ZeroTimeProvider;
+
+impl PerfTimeProvider for ZeroTimeProvider {
+    fn get_time(&self) -> PerfClock {
+        unsafe {
+            PerfClock {
+                PerfTime: std::mem::transmute(0u64),
+                PerfFreq: std::mem::transmute(0u64),
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
 pub struct TickCountTimeProvider;
 
-impl PerfClockProvider for TickCountTimeProvider {
+impl PerfTimeProvider for TickCountTimeProvider {
     fn get_time(&self) -> PerfClock {
         use winapi::um::sysinfoapi::GetTickCount;
 
@@ -202,10 +292,10 @@ impl PerfClockProvider for TickCountTimeProvider {
 
 #[derive(Debug)]
 pub struct PerfObjectTypeTemplate {
-    name_offset: DWORD,
-    help_offset: DWORD,
-    detail_level: DetailLevel,
-    DefaultCounter: LONG,
+    pub name_offset: DWORD,
+    pub help_offset: DWORD,
+    pub detail_level: DetailLevel,
+    pub DefaultCounter: LONG,
 }
 
 impl PerfObjectTypeTemplate {
@@ -237,7 +327,8 @@ impl PerfObjectTypeTemplate {
         instances: Option<&[PERF_INSTANCE_DEFINITION]>,
         block: PERF_COUNTER_BLOCK,
         now: PerfClock,
-    ) -> PERF_OBJECT_TYPE {
+    ) -> PERF_OBJECT_TYPE
+    {
         let counters_length: usize = counters.iter().map(|c| c.ByteLength as usize).sum();
         let instances_length: usize = instances.map(|it| it.iter().map(|i| i.ByteLength as usize).sum()).unwrap_or(0);
         // no instances == 1 block
@@ -298,28 +389,28 @@ impl PerfObjectTypeTemplate {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub struct PerfCounterDefinitionTemplate {
-    CounterNameTitleIndex: DWORD,
-    CounterHelpTitleIndex: DWORD,
-    DefaultScale: LONG,
-    DetailLevel: DetailLevel,
-    CounterType: CounterTypeDefinition,
-    CounterSize: Option<DWORD>,
+    pub name_offset: DWORD,
+    pub help_offset: DWORD,
+    pub DefaultScale: LONG,
+    pub DetailLevel: DetailLevel,
+    pub counter_type: CounterTypeDefinition,
+    pub CounterSize: Option<DWORD>,
 }
 
 impl PerfCounterDefinitionTemplate {
     pub fn new(
-        CounterNameTitleIndex: DWORD,
+        name_offset: DWORD,
         CounterType: CounterTypeDefinition,
     ) -> Self {
         let CounterSize = CounterType.size().size_of().map(|it| it as _);
         Self {
-            CounterNameTitleIndex,
-            CounterHelpTitleIndex: CounterNameTitleIndex + 1,
+            name_offset,
+            help_offset: name_offset + 1,
             DefaultScale: 0,
             DetailLevel: DetailLevel::default(),
-            CounterType,
+            counter_type: CounterType,
             CounterSize,
         }
     }
@@ -339,22 +430,23 @@ impl PerfCounterDefinitionTemplate {
         self
     }
 
-    pub fn build_layout(&self, offset: DWORD) -> PERF_COUNTER_DEFINITION {
+    pub fn build_layout(&self, first_counter: DWORD, offset: DWORD) -> PERF_COUNTER_DEFINITION {
         PERF_COUNTER_DEFINITION {
             ByteLength: size_of::<PERF_COUNTER_DEFINITION>() as _,
-            CounterNameTitleIndex: self.CounterNameTitleIndex,
+            CounterNameTitleIndex: self.name_offset + first_counter,
             CounterNameTitle: 0,
-            CounterHelpTitleIndex: self.CounterHelpTitleIndex,
+            CounterHelpTitleIndex: self.help_offset + first_counter,
             CounterHelpTitle: 0,
             DefaultScale: self.DefaultScale,
             DetailLevel: self.DetailLevel as _,
-            CounterType: self.CounterType.into_raw(),
+            CounterType: self.counter_type.into_raw(),
             CounterSize: dword_multiple(self.CounterSize.expect("Cannot infer size. Please, set it manually") as _) as _,
             CounterOffset: offset as _,
         }
     }
 }
 
+#[derive(Debug)]
 pub struct PerfInstanceDefinitionTemplate<'a> {
     ParentObjectTitleIndex: DWORD,
     ParentObjectInstance: DWORD,
@@ -465,7 +557,7 @@ pub struct CountersBlockBuffer<'a> {
 impl<'a> CountersBlockBuffer<'a> {
     pub fn write<'b>(&mut self, def: &PERF_COUNTER_DEFINITION, value: CounterValue<'b>) -> Result<(), ()> {
         let offset = def.CounterOffset as usize;
-        let length = def.ByteLength as usize;
+        let length = def.CounterSize as usize;
         let slice = self.buffer.get_mut(offset..offset + length).ok_or(())?;
 
         value.write(slice).map_err(drop)?;
@@ -474,6 +566,7 @@ impl<'a> CountersBlockBuffer<'a> {
     }
 }
 
+#[derive(Clone, Debug)]
 pub enum QueryType {
     Global,
     Costly,
@@ -503,10 +596,10 @@ fn dword_multiple(of: usize) -> usize {
     ((of + size - 1) / size) * size
 }
 
-fn layout_of_counters(templates: &[PerfCounterDefinitionTemplate]) -> CountersBlockTemplate {
+fn layout_of_counters(first_counter: DWORD, templates: &[PerfCounterDefinitionTemplate]) -> CountersBlockTemplate {
     let mut block = CountersBlockTemplate::new();
     for template in templates {
-        let counter = template.build_layout(block.offset());
+        let counter = template.build_layout(first_counter, block.offset());
         block.add_counter(counter);
     }
     block
@@ -521,8 +614,8 @@ fn layout_of_instances(templates: &[PerfInstanceDefinitionTemplate]) -> Vec<PERF
     instances
 }
 
-fn error_small_buffer(_: ()) -> Box<dyn Error> {
-    "buffer is too small".into()
+fn error_small_buffer(_: ()) -> WinError {
+    WinError::new(ERROR_MORE_DATA)
 }
 
 unsafe fn copy_struct_into_buffer<'a, T>(source: &T, buffer: &'a mut [u8]) -> Result<(usize, &'a mut [u8]), ()> {
@@ -548,31 +641,93 @@ fn write_object_struct_header<'a>(object: &PERF_OBJECT_TYPE, buffer: &'a mut [u8
     unsafe { copy_struct_into_buffer(object, buffer) }
 }
 
-fn write_counter_definitions<'a>(counters: &[PERF_COUNTER_DEFINITION], mut buffer: &'a mut [u8]) -> Result<(usize, &'a mut [u8]), ()> {
-    let mut total = 0;
-    for counter in counters {
-        unsafe {
-            let (size, rest) = copy_struct_into_buffer(counter, buffer)?;
-            total += size;
-            buffer = rest;
-        }
-    }
-    Ok((total, buffer))
+fn write_counter_definition<'a>(counter: &PERF_COUNTER_DEFINITION, buffer: &'a mut [u8]) -> Result<(usize, &'a mut [u8]), ()> {
+    unsafe { copy_struct_into_buffer(counter, buffer) }
 }
+
+
+// fn write_counter_definitions<'a>(counters: &[PERF_COUNTER_DEFINITION], mut buffer: &'a mut [u8]) -> Result<(usize, &'a mut [u8]), ()> {
+//     let mut total = 0;
+//     for counter in counters {
+//         unsafe {
+//             let (size, rest) = copy_struct_into_buffer(counter, buffer)?;
+//             total += size;
+//             buffer = rest;
+//         }
+//     }
+//     Ok((total, buffer))
+// }
 
 #[cfg(test)]
 mod test {
     use super::*;
 
-    #[test]
-    fn test() {
-        struct SystemPerfProvider {
-            pub memory_percent: u32,
-            pub cpu_percent: u32,
+    struct BasicPerfProvider {
+        timer: ZeroTimeProvider,
+        objects: Vec<PerfObjectTypeTemplate>,
+        counters: Vec<PerfCounterDefinitionTemplate>,
+        // memory_percent: u32,
+        // cpu_percent: u32,
+    }
+
+    impl BasicPerfProvider {
+        pub fn new(objects: Vec<PerfObjectTypeTemplate>, counters: Vec<PerfCounterDefinitionTemplate>) -> Self {
+            Self {
+                timer: ZeroTimeProvider,
+                objects,
+                counters,
+            }
+        }
+    }
+
+    impl PerfProvider for BasicPerfProvider {
+        fn service_name(&self, for_object: &PerfObjectTypeTemplate) -> &str {
+            unimplemented!()
         }
 
-        // impl Provider for SystemPerfProvider {
-        //
-        // }
+        fn first_counter(&self, for_object: &PerfObjectTypeTemplate) -> WinResult<u32> {
+            Ok(0)
+        }
+
+        fn objects(&self) -> &[PerfObjectTypeTemplate] {
+            self.objects.as_ref()
+        }
+
+        fn time_provider(&self, for_object: &PerfObjectTypeTemplate) -> &dyn PerfTimeProvider {
+            &self.timer
+        }
+
+        fn counters(&self, for_object: &PerfObjectTypeTemplate) -> &[PerfCounterDefinitionTemplate] {
+            self.counters.as_ref()
+        }
+
+        fn instances(&self, for_object: &PerfObjectTypeTemplate) -> Option<&[PerfInstanceDefinitionTemplate]> {
+            None
+        }
+
+        fn data(&self, for_object: &PerfObjectTypeTemplate, per_counter: &PerfCounterDefinitionTemplate, per_instance: Option<&PerfInstanceDefinitionTemplate>, now: PerfClock) -> CounterValue {
+            match per_counter.counter_type.size() {
+                Size::Dword => CounterValue::Dword(42),
+                Size::Large => CounterValue::Large(37),
+                _ => unimplemented!()
+            }
+        }
+    }
+
+    #[test]
+    fn test() {
+        let provider = BasicPerfProvider::new(
+            vec![PerfObjectTypeTemplate::new(0)],
+            vec![PerfCounterDefinitionTemplate::new(2, unsafe { CounterTypeDefinition::from_raw_unchecked(PERF_COUNTER_RAWCOUNT) })],
+        );
+        let mut buffer = vec![0u8; 10 * 1024];
+        let collected = provider.collect(QueryType::Global, buffer.as_mut_slice()).unwrap();
+
+        assert_eq!(collected.num_object_types, 1);
+        let buffer_slice = &buffer[..collected.total_bytes];
+
+        let (rest, obj) = crate::perf::nom::perf_object_type(buffer_slice).unwrap();
+        assert_eq!(rest, &b""[..]);
+        assert_eq!(obj.counters[0].CounterNameTitleIndex, 2);
     }
 }

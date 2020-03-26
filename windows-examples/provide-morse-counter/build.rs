@@ -45,7 +45,7 @@ fn bindgen_define(src: PathBuf, dst: PathBuf) -> Result<(), Box<dyn Error>> {
             })
         })
         .map(|(name, value)| {
-            format!("const {}: u32 = {};\n", name, value)
+            format!("pub const {}: u32 = {};\n", name, value)
         }).for_each(|line| rust.push_str(&line));
     std::fs::write(dst, &rust)?;
 

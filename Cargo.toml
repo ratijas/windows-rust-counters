@@ -7,6 +7,7 @@ members = [
     "win-high",
     "windows-examples/provide-counters",
     "windows-examples/provide-morse-counter",
+    "windows-examples/consume-morse-counter",
     "windows-examples-container",
 ]
 
@@ -17,5 +18,6 @@ default-members = [
     "win-low",
     "win-high",
     "windows-examples/provide-counters",
+    "windows-examples/consume-morse-counter",
     "windows-examples-container",
 ]
