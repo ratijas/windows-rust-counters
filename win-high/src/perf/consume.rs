@@ -7,6 +7,7 @@ use winapi::um::winnls::*;
 
 use crate::prelude::v1::*;
 use winapi::um::winnt::{OSVERSIONINFOW};
+use std::str::FromStr;
 
 /// Translated function `GetLanguageId` from [MSDN].
 ///
@@ -42,16 +43,16 @@ pub fn get_language_id() -> WinResult<LANGID> {
 #[derive(Clone, Debug)]
 pub struct CounterMeta {
     // Name index is always even.
-    pub name_index: usize,
+    pub name_index: DWORD,
     pub name_value: String,
     // Help index is always odd, and equals name index + 1.
-    pub help_index: usize,
+    pub help_index: DWORD,
     pub help_value: String,
 }
 
 pub struct AllCounters {
     // Key is the name index
-    table: BTreeMap<usize, CounterMeta>
+    table: BTreeMap<DWORD, CounterMeta>
 }
 
 impl AllCounters {
@@ -61,11 +62,11 @@ impl AllCounters {
         }
     }
 
-    pub fn get(&self, name_index: usize) -> Option<&CounterMeta> {
+    pub fn get(&self, name_index: DWORD) -> Option<&CounterMeta> {
         self.table.get(&name_index)
     }
 
-    pub fn entry(&mut self, name_index: usize) -> &mut CounterMeta {
+    pub fn entry(&mut self, name_index: DWORD) -> &mut CounterMeta {
         let default = CounterMeta {
             name_index,
             name_value: String::new(),
@@ -75,7 +76,7 @@ impl AllCounters {
         self.table.entry(name_index).or_insert(default)
     }
 
-    pub fn map(&self) -> &BTreeMap<usize, CounterMeta> {
+    pub fn map(&self) -> &BTreeMap<DWORD, CounterMeta> {
         &self.table
     }
 }
@@ -170,13 +171,13 @@ fn u8_as_u16_str(source: &[u8]) -> &U16Str {
     }
 }
 
-fn parse_performance_text_pairs(raw: &[u8]) -> Vec<(usize, String)> {
+fn parse_performance_text_pairs(raw: &[u8]) -> Vec<(DWORD, String)> {
     let raw_u16str = u8_as_u16_str(raw.as_ref());
     let pairs = parse_null_separated_key_value_pairs(raw_u16str);
     pairs
 }
 
-fn parse_null_separated_key_value_pairs(raw: &U16Str) -> Vec<(usize, String)> {
+fn parse_null_separated_key_value_pairs<T: FromStr>(raw: &U16Str) -> Vec<(T, String)> {
     let mut vec = Vec::new();
 
     for (index, value)
@@ -184,10 +185,10 @@ fn parse_null_separated_key_value_pairs(raw: &U16Str) -> Vec<(usize, String)> {
         .tuples::<(&U16CStr, &U16CStr)>()
         .skip(1) // drop useless header with total count
     {
-        let index = match index
+        let index_parsed = match index
             .to_string()
             .map_err(drop)
-            .and_then(|it| it.parse::<usize>().map_err(drop))
+            .and_then(|it| it.parse::<T>().map_err(drop))
         {
             Ok(index) => index,
             Err(_) => {
@@ -198,12 +199,12 @@ fn parse_null_separated_key_value_pairs(raw: &U16Str) -> Vec<(usize, String)> {
         let value = match value.to_string() {
             Ok(value) => value,
             Err(_) => {
-                println!("Error parsing UTF-16 value for index {}", index);
+                println!("Error parsing UTF-16 value for index {}", index.to_string_lossy());
                 continue;
             }
         };
 
-        vec.push((index, value));
+        vec.push((index_parsed, value));
     }
 
     vec
