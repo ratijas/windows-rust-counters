@@ -35,14 +35,14 @@ impl<'b> CounterValue<'b> {
             Ok(())
         }
         unsafe {
-            match self {
+            match *self {
                 CounterValue::Dword(dword) => {
-                    let slice = &[dword];
+                    let slice: &[DWORD] = &[dword];
                     let source = downcast(slice);
                     checked_write(source, buffer)?;
                 }
                 CounterValue::Large(large) => {
-                    let slice = &[large];
+                    let slice: &[ULONGLONG] = &[large];
                     let source = downcast(slice);
                     checked_write(source, buffer)?;
                 }
