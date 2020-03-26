@@ -22,7 +22,7 @@ pub trait Rx {
         Interval::new(self, rate)
     }
 
-    fn map<B, F>(self, f: F) -> MapRx<Self, F> where Self: Sized {
+    fn map<F>(self, f: F) -> MapRx<Self, F> where Self: Sized {
         MapRx::new(self, f)
     }
 
