@@ -21,7 +21,32 @@ pub fn RegConnectRegistryW_Safe(
             return Err(WinError::new_with_message(error_code));
         }
     }
-    assert_ne!(phkResult, null_mut());
+    assert!(!phkResult.is_null());
+    Ok(HKey_Safe::owned(phkResult))
+}
+
+pub fn RegOpenKeyEx_Safe(
+    hKey: HKEY,
+    lpSubKey: LPCWSTR,
+    ulOptions: DWORD,
+    samDesired: REGSAM,
+) -> WinResult<HKey_Safe> {
+    let mut phkResult: HKEY = null_mut();
+    unsafe {
+        let error_code = RegOpenKeyExW(
+            hKey,
+            lpSubKey,
+            ulOptions,
+            samDesired,
+            &mut phkResult as PHKEY,
+        ) as DWORD;
+
+        if error_code != ERROR_SUCCESS {
+            return Err(WinError::new_with_message(error_code));
+        }
+    }
+
+    assert!(!phkResult.is_null());
     Ok(HKey_Safe::owned(phkResult))
 }
 
