@@ -1,5 +1,5 @@
 [package]
-name = "examples-windows-rust"
+name = "examples"
 version = "0.1.0"
 authors = ["ivan tkachenko <ratijas@users.noreply.github.com>"]
 edition = "2018"

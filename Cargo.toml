@@ -5,10 +5,10 @@ members = [
     "rtsm-proto",
     "win-low",
     "win-high",
-    "windows-examples/provide-counters",
-    "windows-examples/provide-morse-counter",
-    "windows-examples/consume-morse-counter",
-    "windows-examples-container",
+    "examples.d/provide-counters",
+    "examples.d/provide-morse-counter",
+    "examples.d/consume-morse-counter",
+    "examples",
 ]
 
 # exclude crates with crate_type = "cdylib"
@@ -17,7 +17,7 @@ default-members = [
     "morse-stream",
     "win-low",
     "win-high",
-    "windows-examples/provide-counters",
-    "windows-examples/consume-morse-counter",
-    "windows-examples-container",
+    "examples.d/provide-counters",
+    "examples.d/consume-morse-counter",
+    "examples",
 ]

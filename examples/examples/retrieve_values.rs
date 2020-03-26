@@ -97,7 +97,7 @@ fn main() {
 
 fn print_perf_data(data: &PerfDataBlock, meta: &AllCounters) {
     for obj in data.object_types.iter() {
-        let name = &meta.get(obj.ObjectNameTitleIndex as usize).expect("Object name").name_value;
+        let name = &meta.get(obj.ObjectNameTitleIndex).expect("Object name").name_value;
         println!("Object #{}, name: {:?}", obj.ObjectNameTitleIndex, name);
         println!("Has instances? {}", obj.NumInstances != PERF_NO_INSTANCES);
         match &obj.data {
@@ -116,7 +116,7 @@ fn print_counters_data(left_pad: &str, counters: &[PerfCounterDefinition], block
     println!("{}Counters:", left_pad);
     for c in counters {
         let raw = get_slice(c, block).expect("get slice");
-        let name = &meta.get(c.CounterNameTitleIndex as usize).expect("Counter name").name_value;
+        let name = &meta.get(c.CounterNameTitleIndex).expect("Counter name").name_value;
         let typ = CounterTypeDefinition::from_raw(c.CounterType).expect("Counter type");
 
         println!("{}  Counter #{}, name: {:?}, scale: {}, offset: {}, size: {}, type: {:#010x}",

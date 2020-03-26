@@ -645,19 +645,6 @@ fn write_counter_definition<'a>(counter: &PERF_COUNTER_DEFINITION, buffer: &'a m
     unsafe { copy_struct_into_buffer(counter, buffer) }
 }
 
-
-// fn write_counter_definitions<'a>(counters: &[PERF_COUNTER_DEFINITION], mut buffer: &'a mut [u8]) -> Result<(usize, &'a mut [u8]), ()> {
-//     let mut total = 0;
-//     for counter in counters {
-//         unsafe {
-//             let (size, rest) = copy_struct_into_buffer(counter, buffer)?;
-//             total += size;
-//             buffer = rest;
-//         }
-//     }
-//     Ok((total, buffer))
-// }
-
 #[cfg(test)]
 mod test {
     use super::*;
@@ -715,7 +702,7 @@ mod test {
     }
 
     #[test]
-    fn test() {
+    fn test_no_instances() {
         let provider = BasicPerfProvider::new(
             vec![PerfObjectTypeTemplate::new(0)],
             vec![PerfCounterDefinitionTemplate::new(2, unsafe { CounterTypeDefinition::from_raw_unchecked(PERF_COUNTER_RAWCOUNT) })],
