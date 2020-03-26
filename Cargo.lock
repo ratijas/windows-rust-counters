@@ -222,18 +222,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "example-provide-counters"
-version = "0.1.0"
-dependencies = [
- "cargo-emit",
- "hexyl",
- "path-slash",
- "quote",
- "win-high",
- "win-low",
-]
-
-[[package]]
 name = "example-provide-morse-counter"
 version = "0.1.0"
 dependencies = [

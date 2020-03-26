@@ -1,6 +1,0 @@
-LIBRARY example_provide_counters
-
-EXPORTS
-    MyOpenProc     @1
-    MyCollectProc  @2
-    MyCloseProc    @3
