@@ -63,18 +63,20 @@ pub type VecStats = Vec<Stats>;
 
 pub type ArcVecStats = Arc<RwLock<VecStats>>;
 
+const HIST_SIZE: usize = 200;
+
 impl Stats {
     pub fn new(counter: CounterMeta) -> Self {
         Stats {
             counter,
-            decoded: String::with_capacity(100),
-            signal_bool: Vec::with_capacity(100),
-            signal_raw: Vec::with_capacity(100),
+            decoded: String::with_capacity(HIST_SIZE),
+            signal_bool: Vec::with_capacity(HIST_SIZE),
+            signal_raw: Vec::with_capacity(HIST_SIZE),
         }
     }
 
     fn drop_first<T>(vec: &mut Vec<T>) {
-        if vec.len() >= 100 {
+        if vec.len() >= HIST_SIZE {
             vec.remove(0);
         }
     }
@@ -90,7 +92,7 @@ impl Stats {
     }
 
     pub fn push_char(&mut self, char: char) {
-        if self.decoded.len() >= 100 {
+        if self.decoded.len() >= HIST_SIZE {
             self.decoded.remove(0);
         }
         self.decoded.push(char);
