@@ -1,6 +1,8 @@
 use crate::prelude::v1::*;
 
 const INITIAL_BUFFER_SIZE: usize = 8 * 1024;
+// Abort after 1 GB
+const MAX_BUFFER_SIZE: usize = 1024 * 1024 * 1024;
 
 /// Create new buffer and call `query_value_with_buffer`.
 pub fn query_value(
@@ -87,6 +89,10 @@ pub fn query_value_with_buffer(
             let increment = if buffer_size == 0 { INITIAL_BUFFER_SIZE } else { buffer_size };
             buffer_size += increment;
             buffer_size_out = buffer_size as DWORD;
+            if buffer_size > MAX_BUFFER_SIZE {
+                return Err(WinError::new(ERROR_MORE_DATA)
+                    .with_comment(format!("RegQueryValueExW reached buffer limit: {} bytes", buffer_size)));
+            }
             // buffer considers itself empty, so reversing for "additional" N items is the same as
             // reserving for total of N items.
             buffer.reserve(buffer_size);
@@ -104,7 +110,8 @@ pub fn query_value_with_buffer(
     }
 
     if error_code != ERROR_SUCCESS {
-        return Err(WinError::new_with_message(error_code).with_comment(format!("RegQueryValueExW with query: {}", value_name)));
+        return Err(WinError::new_with_message(error_code)
+            .with_comment(format!("RegQueryValueExW with query: {}", value_name)));
     }
 
     // SAFETY: buffer_size_out is initialized to a valid value by a successful call to RegQueryValueExW
