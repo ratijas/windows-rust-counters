@@ -255,7 +255,7 @@ fn worker_thread_main(cancellation_token: Arc<AtomicBool>, index: usize, mut str
 }
 
 pub trait StringsProvider {
-    fn provide(&mut self) -> &str;
+    fn provide(&mut self) -> String;
 }
 
 pub struct ConstString {
@@ -269,15 +269,14 @@ impl ConstString {
 }
 
 impl StringsProvider for ConstString {
-    fn provide(&mut self) -> &str {
-        &self.string
+    fn provide(&mut self) -> String {
+        self.string.clone()
     }
 }
 
 pub struct RegKeyStringsProvider {
     sub_key: U16CString,
     value_name: String,
-    value: String,
 }
 
 impl RegKeyStringsProvider {
@@ -285,11 +284,10 @@ impl RegKeyStringsProvider {
         Self {
             sub_key: U16CString::from_str(sub_key).unwrap(),
             value_name: value_name.to_string(),
-            value: String::new(),
         }
     }
 
-    fn fetch(&mut self) -> WinResult<()> {
+    fn fetch(&mut self) -> WinResult<String> {
         use winapi::um::winnt::KEY_READ;
 
         let hkey = RegOpenKeyEx_Safe(
@@ -304,14 +302,12 @@ impl RegKeyStringsProvider {
             None,
             None,
         )?;
-        self.value = unsafe { U16CStr::from_ptr_str(buffer.as_ptr() as *const _) }.to_string_lossy();
-        Ok(())
+        Ok(unsafe { U16CStr::from_ptr_str(buffer.as_ptr() as *const _) }.to_string_lossy())
     }
 }
 
 impl StringsProvider for RegKeyStringsProvider {
-    fn provide(&mut self) -> &str {
-        self.fetch().unwrap();
-        &self.value
+    fn provide(&mut self) -> String {
+        self.fetch().unwrap()
     }
 }
