@@ -436,10 +436,10 @@ fn write_counter_definition<'a>(counter: &PERF_COUNTER_DEFINITION, buffer: &'a m
 
 #[derive(Debug)]
 pub struct PerfInstanceDefinitionTemplate<'a> {
-    ParentObjectTitleIndex: DWORD,
-    ParentObjectInstance: DWORD,
-    UniqueID: LONG,
-    Name: Cow<'a, U16CStr>,
+    pub ParentObjectTitleIndex: DWORD,
+    pub ParentObjectInstance: DWORD,
+    pub UniqueID: LONG,
+    pub Name: Cow<'a, U16CStr>,
 }
 
 impl<'a> PerfInstanceDefinitionTemplate<'a> {
