@@ -7,6 +7,7 @@ REGEDIT4
 
 [HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\Morse]
 "CustomMessage" = "Hello, rust!"
+"NumInstances" = dword:FFFFFFFF
 
 [HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\EventLog\Application\Morse]
 "EventMessageFile" = "%systemroot%\\system32\\ExampleProvideMorseCounter.dll"

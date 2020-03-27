@@ -8,8 +8,10 @@ use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::AtomicBool;
 use std::time::Duration;
+use std::mem::size_of;
 
 use log::{error, info};
+use winapi::um::winnt::KEY_READ;
 
 use morse_stream::*;
 use signal_flow::*;
@@ -22,6 +24,7 @@ use win_high::prelude::v1::*;
 use win_low::winperf::*;
 
 use crate::worker::WorkerThread;
+use std::borrow::Cow;
 
 mod worker;
 
@@ -131,13 +134,6 @@ pub struct MorseCountersProvider {
 impl MorseCountersProvider {
     pub fn new() -> Self {
         let typ = CounterTypeDefinition::from_raw(0).unwrap();
-        // let typ = CounterTypeDefinition::new(
-        //     Size::Dword,
-        //     CounterType::Number(Number::Decimal),
-        //     Timer::ObjectTimer,
-        //     CalculationModifiers::empty(),
-        //     DisplayFlags::NoSuffix,
-        // );
         Self {
             timer: ZeroTimeProvider,
             objects: vec![PerfObjectTypeTemplate::new(symbols::MORSE_OBJECT)],
@@ -168,7 +164,16 @@ impl PerfProvider for MorseCountersProvider {
     }
 
     fn instances(&self, for_object: &PerfObjectTypeTemplate) -> Option<Vec<PerfInstanceDefinitionTemplate>> {
-        None
+        match *NUM_INSTANCES {
+            -1 => None,
+            x => {
+                Some((0..(x as usize)).into_iter().map(|i: usize| {
+                    PerfInstanceDefinitionTemplate::new(
+                        Cow::from(U16CString::from_str(i.to_string()).unwrap())
+                    ).with_unique_id(i as _)
+                }).collect())
+            }
+        }
     }
 
     fn data(&self,
@@ -194,7 +199,12 @@ lazy_static! {
     static ref WORKERS: Mutex<Vec<WorkerThread<()>>> = Mutex::new(vec![]);
     static ref CURRENT_SIGNAL: Mutex<[u32; 3]> = Mutex::new([0; 3]);
     static ref PROVIDER: Mutex<CachingPerfProvider<MorseCountersProvider>> = Mutex::new(CachingPerfProvider::new(MorseCountersProvider::new()));
+    static ref NUM_INSTANCES: LONG = get_number_of_instances();
 }
+
+const SUB_KEY_MORSE: &str = r"SYSTEM\CurrentControlSet\Services\Morse";
+const VALUE_NAME_CUSTOM_MESSAGE: &str = "CustomMessage";
+const VALUE_NAME_NUM_INSTANCES: &str = "NumInstances";
 
 fn start_global_workers() -> Result<(), ()> {
     let mutex = &*WORKERS;
@@ -205,8 +215,8 @@ fn start_global_workers() -> Result<(), ()> {
         lock.push(WorkerThread::spawn(|token|
             worker_thread_main(token, 1,
                                RegKeyStringsProvider::new(
-                                   r"SYSTEM\CurrentControlSet\Services\Morse",
-                                   "CustomMessage",
+                                   SUB_KEY_MORSE,
+                                   VALUE_NAME_CUSTOM_MESSAGE,
                                ))));
         lock.push(WorkerThread::spawn(|token|
             worker_thread_main(token, 2, RandomJokeProvider)));
@@ -226,6 +236,31 @@ fn stop_global_workers() -> Result<(), ()> {
         }
     }
     Ok(())
+}
+
+fn get_number_of_instances() -> LONG {
+    let sub_key = U16CString::from_str(SUB_KEY_MORSE).unwrap();
+    if let Ok(hkey) = RegOpenKeyEx_Safe(
+        HKEY_LOCAL_MACHINE,
+        sub_key.as_ptr(),
+        0,
+        KEY_READ,
+    ) {
+        if let Ok(vec) = query_value(
+            *hkey,
+            VALUE_NAME_NUM_INSTANCES,
+            None,
+            None,
+        ) {
+            if vec.len() == size_of::<LONG>() {
+                // read vector as int
+                let mut bytes = [0; 4];
+                bytes.copy_from_slice(&vec[..size_of::<LONG>()]);
+                return LONG::from_ne_bytes(bytes).min(1024);
+            }
+        }
+    }
+    return -1;
 }
 
 const SOS: &'static str = "SOS";
@@ -290,8 +325,6 @@ impl RegKeyStringsProvider {
     }
 
     fn fetch(&mut self) -> WinResult<String> {
-        use winapi::um::winnt::KEY_READ;
-
         let hkey = RegOpenKeyEx_Safe(
             HKEY_LOCAL_MACHINE,
             self.sub_key.as_ptr(),
