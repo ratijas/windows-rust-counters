@@ -22,6 +22,10 @@ pub trait Tx {
     {
         CancellableTx::new(cancellation_token, self)
     }
+
+    fn chunks<T>(self, chunk_size: usize) -> ChunksTx<Self, T> where Self: Sized {
+        ChunksTx::new(chunk_size, self)
+    }
 }
 
 
@@ -116,7 +120,7 @@ impl<'a, T> Tx for VecCollectorTx<'a, T> {
 }
 
 ////////////////////////////////////////////////
-//////////////////// Custom ////////////////////
+///////////////// Cancellable //////////////////
 ////////////////////////////////////////////////
 
 /// Passes values through unless `cancellation_token` (AtomicBool) is set to true,
@@ -191,6 +195,45 @@ impl<F, T> Tx for CustomTx<F, T>
 
     fn send(&mut self, value: Self::Item) -> Result<(), Box<dyn Error>> {
         (self.handler)(value)
+    }
+}
+
+
+pub struct ChunksTx<X, T> {
+    tx: X,
+    chunk_size: usize,
+    buffer: Vec<T>
+}
+
+impl<X, T> ChunksTx<X, T> {
+    pub fn new(chunk_size: usize, tx: X) -> Self {
+        assert_ne!(chunk_size, 0, "Chunk size must not be zero");
+        ChunksTx {
+            tx,
+            chunk_size,
+            buffer: Vec::with_capacity(chunk_size),
+        }
+    }
+
+    fn swap(&mut self) -> Vec<T> {
+        let mut vec = Vec::with_capacity(self.chunk_size);
+        std::mem::swap(&mut vec, &mut self.buffer);
+        vec
+    }
+}
+
+impl<X, T> Tx for ChunksTx<X, T>
+    where X: Tx<Item=Vec<T>>
+{
+    type Item = T;
+
+    fn send(&mut self, value: Self::Item) -> Result<(), Box<dyn Error>> {
+        self.buffer.push(value);
+        if self.buffer.len() == self.chunk_size {
+            let vec = self.swap();
+            self.tx.send(vec)?;
+        }
+        Ok(())
     }
 }
 
