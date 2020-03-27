@@ -140,7 +140,9 @@ fn draw_stat<B>(f: &mut Frame<B>, app: &mut App, stat: Stats, area: Rect) -> io:
         .style(Style::default().fg(COLOR_SECONDARY_VARIANT))
         .render(f, chunks[1]);
 
-    if let Some(figure) = app.view.font.convert(&stat.decoded) {
+    let message = &stat.decoded;
+    let message = message.replace(" ", "   "); // make spaces noticeable with this font
+    if let Some(figure) = app.view.font.convert(&message) {
         let string = figure.to_string();
         let string = trim_lines_to_width(&*string, Alignment::Right, chunks[2]);
         let text = [
