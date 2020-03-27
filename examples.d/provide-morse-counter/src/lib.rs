@@ -199,8 +199,15 @@ fn start_global_workers() -> Result<(), ()> {
     let mutex = &*WORKERS;
     let mut lock = mutex.lock().map_err(drop)?;
     if lock.is_empty() {
-        lock.push(WorkerThread::spawn(|token| worker_thread_main(token, 0, ConstString::new(SOS))));
-        lock.push(WorkerThread::spawn(|token| worker_thread_main(token, 1, ConstString::new(MESSAGE))));
+        lock.push(WorkerThread::spawn(|token|
+            worker_thread_main(token, 0, ConstString::new(SOS))));
+        lock.push(WorkerThread::spawn(|token|
+            worker_thread_main(token, 1,
+                RegKeyStringsProvider::new(
+                    r"SYSTEM\CurrentControlSet\Services\Morse",
+                    "CustomMessage",
+                )
+            )));
     }
     Ok(())
 }
@@ -220,7 +227,6 @@ fn stop_global_workers() -> Result<(), ()> {
 }
 
 const SOS: &'static str = "SOS";
-const MESSAGE: &'static str = "Hello, world!";
 
 //noinspection DuplicatedCode
 fn worker_thread_main(cancellation_token: Arc<AtomicBool>, index: usize, mut string_provider: impl StringsProvider) {
@@ -265,5 +271,47 @@ impl ConstString {
 impl StringsProvider for ConstString {
     fn provide(&mut self) -> &str {
         &self.string
+    }
+}
+
+pub struct RegKeyStringsProvider {
+    sub_key: U16CString,
+    value_name: String,
+    value: String,
+}
+
+impl RegKeyStringsProvider {
+    pub fn new(sub_key: &str, value_name: &str) -> Self {
+        Self {
+            sub_key: U16CString::from_str(sub_key).unwrap(),
+            value_name: value_name.to_string(),
+            value: String::new(),
+        }
+    }
+
+    fn fetch(&mut self) -> WinResult<()> {
+        use winapi::um::winnt::KEY_READ;
+
+        let hkey = RegOpenKeyEx_Safe(
+            HKEY_LOCAL_MACHINE,
+            self.sub_key.as_ptr(),
+            0,
+            KEY_READ,
+        )?;
+        let buffer = query_value(
+            *hkey,
+            &self.value_name,
+            None,
+            None,
+        )?;
+        self.value = unsafe { U16CStr::from_ptr_str(buffer.as_ptr() as *const _) }.to_string_lossy();
+        Ok(())
+    }
+}
+
+impl StringsProvider for RegKeyStringsProvider {
+    fn provide(&mut self) -> &str {
+        self.fetch().unwrap();
+        &self.value
     }
 }

@@ -8,7 +8,7 @@ echo]
 
 echo[
 echo Uninstalling from registry
-reg delete HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\Morse\Performance          /f
+reg delete HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\Morse\                     /f
 reg delete HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\EventLog\Application\Morse /f
 echo]
 
