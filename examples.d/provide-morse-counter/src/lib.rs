@@ -4,7 +4,6 @@
 extern crate lazy_static;
 
 use std::error::Error;
-use std::iter;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::AtomicBool;
@@ -200,8 +199,8 @@ fn start_global_workers() -> Result<(), ()> {
     let mutex = &*WORKERS;
     let mut lock = mutex.lock().map_err(drop)?;
     if lock.is_empty() {
-        lock.push(WorkerThread::spawn(|token| worker_thread_main(token, 0, || SOS.to_string())));
-        lock.push(WorkerThread::spawn(|token| worker_thread_main(token, 1, || MESSAGE.to_string())));
+        lock.push(WorkerThread::spawn(|token| worker_thread_main(token, 0, ConstString::new(SOS))));
+        lock.push(WorkerThread::spawn(|token| worker_thread_main(token, 1, ConstString::new(MESSAGE))));
     }
     Ok(())
 }
@@ -220,11 +219,11 @@ fn stop_global_workers() -> Result<(), ()> {
     Ok(())
 }
 
-const SOS: &'static str = "SOS ";
-const MESSAGE: &'static str = "Hello, world! ";
+const SOS: &'static str = "SOS";
+const MESSAGE: &'static str = "Hello, world!";
 
 //noinspection DuplicatedCode
-fn worker_thread_main(cancellation_token: Arc<AtomicBool>, index: usize, string_provider: impl FnMut() -> String) {
+fn worker_thread_main(cancellation_token: Arc<AtomicBool>, index: usize, mut string_provider: impl StringsProvider) {
     let mut tx = CustomTx::new(|value: u32| -> Result<(), Box<dyn Error>> {
         let mut current = CURRENT_SIGNAL.lock().map_err(|_| "Mutex error")?;
         current[index] = value;
@@ -235,15 +234,36 @@ fn worker_thread_main(cancellation_token: Arc<AtomicBool>, index: usize, string_
         .rtsm(RtsmRanges::new(10..40, 60..90).unwrap())
         .morse_encode::<ITU>();
 
-    for string in iter::repeat_with(string_provider) {
-        for char in string.chars() {
+    'outer: loop {
+        let string = string_provider.provide();
+        for char in string.chars().chain(" ".chars()) {
             match tx.send(char) {
                 Err(e) => {
                     error!("Worker error : {}", e);
-                    break;
+                    break 'outer;
                 }
                 _ => {}
             }
         }
+    }
+}
+
+pub trait StringsProvider {
+    fn provide(&mut self) -> &str;
+}
+
+pub struct ConstString {
+    string: String,
+}
+
+impl ConstString {
+    pub fn new(s: &str) -> Self {
+        Self { string: s.to_string() }
+    }
+}
+
+impl StringsProvider for ConstString {
+    fn provide(&mut self) -> &str {
+        &self.string
     }
 }
