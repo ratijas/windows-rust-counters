@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 
-use log::{info, error};
+use log::{error, info};
 
 use morse_stream::*;
 use signal_flow::*;
@@ -181,6 +181,7 @@ impl PerfProvider for MorseCountersProvider {
         let signal = match per_counter.name_offset {
             symbols::CHANNEL_SOS => lock[0],
             symbols::CHANNEL_CUSTOM => lock[1],
+            symbols::CHANNEL_MOTD => lock[2],
             _ => 0,
         };
         let data = CounterValue::Dword(signal);
@@ -191,7 +192,7 @@ impl PerfProvider for MorseCountersProvider {
 
 lazy_static! {
     static ref WORKERS: Mutex<Vec<WorkerThread<()>>> = Mutex::new(vec![]);
-    static ref CURRENT_SIGNAL: Mutex<[u32; 2]> = Mutex::new([0, 0]);
+    static ref CURRENT_SIGNAL: Mutex<[u32; 3]> = Mutex::new([0; 3]);
     static ref PROVIDER: Mutex<CachingPerfProvider<MorseCountersProvider>> = Mutex::new(CachingPerfProvider::new(MorseCountersProvider::new()));
 }
 
@@ -203,11 +204,12 @@ fn start_global_workers() -> Result<(), ()> {
             worker_thread_main(token, 0, ConstString::new(SOS))));
         lock.push(WorkerThread::spawn(|token|
             worker_thread_main(token, 1,
-                RegKeyStringsProvider::new(
-                    r"SYSTEM\CurrentControlSet\Services\Morse",
-                    "CustomMessage",
-                )
-            )));
+                               RegKeyStringsProvider::new(
+                                   r"SYSTEM\CurrentControlSet\Services\Morse",
+                                   "CustomMessage",
+                               ))));
+        lock.push(WorkerThread::spawn(|token|
+            worker_thread_main(token, 2, RandomJokeProvider)));
     }
     Ok(())
 }
@@ -309,5 +311,36 @@ impl RegKeyStringsProvider {
 impl StringsProvider for RegKeyStringsProvider {
     fn provide(&mut self) -> String {
         self.fetch().unwrap()
+    }
+}
+
+pub struct RandomJokeProvider;
+
+impl RandomJokeProvider {
+    pub fn fetch(&self) -> Result<String, Box<dyn Error>> {
+        const URL: &str = "http://api.icndb.com/jokes/random?limitTo=nerdy";
+
+        let resp: serde_json::Value = reqwest::blocking::get(URL)?
+            .json()?;
+        let joke = Self::get_in(&resp).ok_or("invalid json")?;
+        Ok(joke.to_string())
+    }
+
+    fn get_in(json: &serde_json::Value) -> Option<&str> {
+        json.get("value")?
+            .get("joke")?
+            .as_str()
+    }
+}
+
+impl StringsProvider for RandomJokeProvider {
+    fn provide(&mut self) -> String {
+        match self.fetch() {
+            Ok(string) => string,
+            Err(why) => {
+                error!("MOTD error: {}", why);
+                "".to_string()
+            }
+        }
     }
 }
