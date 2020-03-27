@@ -4,6 +4,7 @@
 use std::mem::{align_of, size_of};
 use std::str::FromStr;
 use std::cell::RefCell;
+use std::borrow::{Borrow, Cow};
 
 use win_low::winperf::*;
 
@@ -45,7 +46,7 @@ pub trait PerfProvider {
 
     fn counters(&self, for_object: &PerfObjectTypeTemplate) -> &[PerfCounterDefinitionTemplate];
 
-    fn instances(&self, for_object: &PerfObjectTypeTemplate) -> Option<&[PerfInstanceDefinitionTemplate]>;
+    fn instances(&self, for_object: &PerfObjectTypeTemplate) -> Option<Vec<PerfInstanceDefinitionTemplate>>;
 
     fn data(&self,
             for_object: &PerfObjectTypeTemplate,
@@ -82,7 +83,7 @@ pub trait PerfProvider {
         let counters = counters_block_template.counters();
         let counters_layout = counters_block_template.build_layout();
         let instance_templates = self.instances(object_template);
-        let instances = instance_templates.map(layout_of_instances);
+        let instances = instance_templates.as_ref().map(Vec::as_ref).map(layout_of_instances);
         let object = object_template.build_layout(
             first_counter,
             counters,
@@ -119,7 +120,7 @@ pub trait PerfProvider {
         } else {
             let instance_templates = instance_templates.unwrap();
             let instances = instances.unwrap();
-            for (instance, instance_template) in instances.iter().zip(instance_templates) {
+            for (instance, instance_template) in instances.iter().zip(instance_templates.iter()) {
                 // write instance
                 buf = instance_template.write_with_layout(instance, buf).map_err(error_internal)?;
                 // write block
@@ -229,7 +230,7 @@ impl<X: PerfProvider> PerfProvider for CachingPerfProvider<X> {
         self.inner.counters(for_object)
     }
 
-    fn instances(&self, for_object: &PerfObjectTypeTemplate) -> Option<&[PerfInstanceDefinitionTemplate]> {
+    fn instances(&self, for_object: &PerfObjectTypeTemplate) -> Option<Vec<PerfInstanceDefinitionTemplate>> {
         self.inner.instances(for_object)
     }
 
@@ -438,11 +439,11 @@ pub struct PerfInstanceDefinitionTemplate<'a> {
     ParentObjectTitleIndex: DWORD,
     ParentObjectInstance: DWORD,
     UniqueID: LONG,
-    Name: &'a U16CStr,
+    Name: Cow<'a, U16CStr>,
 }
 
 impl<'a> PerfInstanceDefinitionTemplate<'a> {
-    pub fn new(Name: &'a U16CStr) -> Self {
+    pub fn new(Name: Cow<'a, U16CStr>) -> Self {
         PerfInstanceDefinitionTemplate {
             ParentObjectTitleIndex: 0,
             ParentObjectInstance: 0,
@@ -469,7 +470,7 @@ impl<'a> PerfInstanceDefinitionTemplate<'a> {
     pub fn build_layout(&self) -> PERF_INSTANCE_DEFINITION {
         let struct_size = size_of::<PERF_INSTANCE_DEFINITION>();
         // including nul terminator
-        let name_size = self.Name.as_slice_with_nul().len() * size_of::<DWORD>();
+        let name_size = self.Name.as_slice_with_nul().len() * size_of::<WCHAR>();
 
         PERF_INSTANCE_DEFINITION {
             ByteLength: align_to::<PERF_INSTANCE_DEFINITION>(struct_size + name_size) as _,
@@ -485,7 +486,7 @@ impl<'a> PerfInstanceDefinitionTemplate<'a> {
     pub fn write_with_layout<'b>(&self, def: &PERF_INSTANCE_DEFINITION, buffer: &'b mut [u8]) -> Result<&'b mut [u8], ()> {
         unsafe {
             copy_struct_into_buffer(def, buffer)?;
-            copy_cstr_into_buffer(self.Name, buffer, def.NameOffset, def.NameLength)?;
+            copy_cstr_into_buffer(self.Name.borrow(), buffer, def.NameOffset, def.NameLength)?;
         }
         buffer.get_mut(def.ByteLength as usize..).ok_or(())
     }
@@ -640,8 +641,6 @@ mod test {
         timer: ZeroTimeProvider,
         objects: Vec<PerfObjectTypeTemplate>,
         counters: Vec<PerfCounterDefinitionTemplate>,
-        // memory_percent: u32,
-        // cpu_percent: u32,
     }
 
     impl BasicPerfProvider {
@@ -675,7 +674,7 @@ mod test {
             self.counters.as_ref()
         }
 
-        fn instances(&self, for_object: &PerfObjectTypeTemplate) -> Option<&[PerfInstanceDefinitionTemplate]> {
+        fn instances(&self, for_object: &PerfObjectTypeTemplate) -> Option<Vec<PerfInstanceDefinitionTemplate>> {
             None
         }
 
@@ -696,7 +695,7 @@ mod test {
         assert_eq!(align_to_dword(1), size_of::<DWORD>());
         // identity
         assert_eq!(align_to_dword(size_of::<DWORD>()), size_of::<DWORD>());
-        // smalest on a bigger type
+        // smallest on a bigger type
         assert_eq!(align_to::<PERF_OBJECT_TYPE>(1), 8);
     }
 
@@ -708,12 +707,104 @@ mod test {
         );
         let mut buffer = vec![0u8; 10 * 1024];
         let collected = provider.collect(QueryType::Global, buffer.as_mut_slice()).unwrap();
+        assert_eq!(collected.num_object_types, 1);
+        let buffer_slice = &buffer[..collected.total_bytes];
+
+        let (rest, obj) = crate::perf::nom::perf_object_type(buffer_slice).unwrap();
+        assert_eq!(rest, &b""[..]);
+        assert_eq!(obj.counters.len(), 1);
+        let counter = &obj.counters[0];
+        assert_eq!(counter.CounterNameTitleIndex, 2);
+    }
+
+    struct InstancesPerfProvider {
+        timer: ZeroTimeProvider,
+        objects: Vec<PerfObjectTypeTemplate>,
+        counters: Vec<PerfCounterDefinitionTemplate>,
+        instances: Vec<String>,
+    }
+
+    #[allow(unused_variables)]
+    impl PerfProvider for InstancesPerfProvider {
+        fn service_name(&self, for_object: &PerfObjectTypeTemplate) -> &str {
+            unimplemented!()
+        }
+
+        fn first_counter(&self, for_object: &PerfObjectTypeTemplate) -> WinResult<u32> {
+            Ok(0)
+        }
+
+        fn objects(&self) -> &[PerfObjectTypeTemplate] {
+            &self.objects
+        }
+
+        fn time_provider(&self, for_object: &PerfObjectTypeTemplate) -> &dyn PerfTimeProvider {
+            &self.timer
+        }
+
+        fn counters(&self, for_object: &PerfObjectTypeTemplate) -> &[PerfCounterDefinitionTemplate] {
+            &self.counters
+        }
+
+        fn instances(&self, for_object: &PerfObjectTypeTemplate) -> Option<Vec<PerfInstanceDefinitionTemplate>> {
+            Some(self.instances.iter().enumerate().map(|(id, name)| {
+                PerfInstanceDefinitionTemplate::new(
+                    Cow::from(
+                        U16CString::from_str(name).unwrap()
+                    )
+                ).with_unique_id(id as _)
+            }).collect())
+        }
+
+        fn data(&self,
+                for_object: &PerfObjectTypeTemplate,
+                per_counter: &PerfCounterDefinitionTemplate,
+                per_instance: Option<&PerfInstanceDefinitionTemplate>,
+                now: PerfClock,
+        ) -> CounterValue {
+            match per_instance {
+                Some(instance) => CounterValue::Dword((2 * instance.UniqueID) as _),
+                None => CounterValue::Dword(42),
+            }
+        }
+    }
+
+    #[test]
+    fn test_instances() {
+        let provider = InstancesPerfProvider {
+            timer: ZeroTimeProvider,
+            objects: vec![PerfObjectTypeTemplate::new(0)],
+            counters: vec![PerfCounterDefinitionTemplate::new(2, unsafe { CounterTypeDefinition::from_raw_unchecked(PERF_COUNTER_RAWCOUNT) })],
+            instances: vec!["first".to_string(), "second".to_string()],
+        };
+
+        let mut buffer = vec![0u8; 10 * 1024];
+        let collected = provider.collect(QueryType::Global, buffer.as_mut_slice()).unwrap();
 
         assert_eq!(collected.num_object_types, 1);
         let buffer_slice = &buffer[..collected.total_bytes];
 
         let (rest, obj) = crate::perf::nom::perf_object_type(buffer_slice).unwrap();
         assert_eq!(rest, &b""[..]);
-        assert_eq!(obj.counters[0].CounterNameTitleIndex, 2);
+        assert_eq!(obj.counters.len(), 1);
+        let counter = &obj.counters[0];
+        assert_eq!(counter.CounterNameTitleIndex, 2);
+
+        assert!(matches!(&obj.data, PerfObjectData::Instances(..)));
+        let instances = obj.data.instances().unwrap();
+        assert_eq!(instances.len(), 2);
+        for (instance, block) in instances {
+            match instance.UniqueID {
+                0 => {
+                    assert_eq!(instance.name.to_string_lossy(), "first");
+                    assert_eq!(CounterValue::try_get(counter, block).unwrap(), CounterValue::Dword(0));
+                }
+                1 => {
+                    assert_eq!(instance.name.to_string_lossy(), "second");
+                    assert_eq!(CounterValue::try_get(counter, block).unwrap(), CounterValue::Dword(2));
+                }
+                _ => unreachable!(),
+            }
+        }
     }
 }

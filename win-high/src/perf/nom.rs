@@ -45,6 +45,22 @@ pub enum PerfObjectData<'a> {
     Instances(Vec<(PerfInstanceDefinition<'a>, PerfCounterBlock<'a>)>),
 }
 
+impl<'a> PerfObjectData<'a> {
+    pub fn singleton(&self) -> Option<&PerfCounterBlock<'a>> {
+        match self {
+            Self::Singleton(block) => Some(block),
+            Self::Instances(..) => None
+        }
+    }
+
+    pub fn instances(&self) -> Option<&[(PerfInstanceDefinition<'a>, PerfCounterBlock<'a>)]> {
+        match self {
+            Self::Singleton(..) => None,
+            Self::Instances(vec) => Some(vec)
+        }
+    }
+}
+
 impl<'a> PerfCounterBlock<'a> {
     pub fn len(&self) -> usize {
         self.raw.ByteLength as usize

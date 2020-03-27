@@ -167,7 +167,7 @@ impl PerfProvider for MorseCountersProvider {
         &*self.counters
     }
 
-    fn instances(&self, for_object: &PerfObjectTypeTemplate) -> Option<&[PerfInstanceDefinitionTemplate]> {
+    fn instances(&self, for_object: &PerfObjectTypeTemplate) -> Option<Vec<PerfInstanceDefinitionTemplate>> {
         None
     }
 
