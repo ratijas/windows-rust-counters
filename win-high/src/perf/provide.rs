@@ -1,7 +1,6 @@
 //! Types and functions for counter data providers
 #![allow(non_snake_case)]
 
-use std::error::Error;
 use std::mem::{align_of, size_of};
 use std::str::FromStr;
 use std::cell::RefCell;
@@ -72,7 +71,7 @@ pub trait PerfProvider {
         &self,
         object_template: &PerfObjectTypeTemplate,
         now: PerfClock,
-        mut buffer: &'a mut [u8],
+        buffer: &'a mut [u8],
     ) -> WinResult<(usize, &'a mut [u8])>
     {
         // build all headers and definitions before writing anything.
@@ -81,56 +80,62 @@ pub trait PerfProvider {
         let counter_templates = self.counters(object_template);
         let counters_block_template = layout_of_counters(first_counter, counter_templates);
         let counters = counters_block_template.counters();
+        let counters_layout = counters_block_template.build_layout();
         let instance_templates = self.instances(object_template);
         let instances = instance_templates.map(layout_of_instances);
         let object = object_template.build_layout(
             first_counter,
-            counters_block_template.counters(),
+            counters,
             instances.as_ref().map(Vec::as_ref),
-            counters_block_template.block(),
+            &counters_layout,
             now,
         );
 
-        // write header and counters definitions
-        let _ = write_object_struct_header(&object, buffer).map_err(error_small_buffer)?;
-        buffer = &mut buffer[object.HeaderLength as usize..];
+        // make sure we won't go past the limit.
+        let mut buf = buffer.get_mut(..object.TotalByteLength as usize)
+            .ok_or(()).map_err(error_small_buffer)?;
 
+        // write header
+        buf = write_object_type_header(&object, buf).map_err(error_internal)?;
+
+        // write counters definitions
         for counter in counters {
-            let _ = write_counter_definition(counter, buffer).map_err(error_small_buffer)?;
-            buffer = &mut buffer[counter.ByteLength as usize..];
+            buf = write_counter_definition(counter, buf).map_err(error_internal)?;
         }
 
+        // write data
         if instances.is_none() {
             // no instances, single block
-            let _ = self.write_block(
+            buf = self.write_block(
                 object_template,
                 None,
                 counter_templates,
                 &counters_block_template,
                 now,
-                buffer,
-            ).map_err(error_small_buffer)?;
-            buffer = &mut buffer[counters_block_template.ByteLength as usize..];
+                buf,
+            ).map_err(error_internal)?;
+            // suppress 'unused' warning
+            let _ = buf;
         } else {
             let instance_templates = instance_templates.unwrap();
             let instances = instances.unwrap();
             for (instance, instance_template) in instances.iter().zip(instance_templates) {
                 // write instance
-                let _ = instance_template.write_with_layout(instance, buffer).map_err(error_small_buffer)?;
-                buffer = &mut buffer[instance.ByteLength as usize..];
+                buf = instance_template.write_with_layout(instance, buf).map_err(error_internal)?;
                 // write block
-                let _ = self.write_block(
+                buf = self.write_block(
                     object_template,
                     Some(instance_template),
                     counter_templates,
                     &counters_block_template,
                     now,
-                    buffer,
-                ).map_err(error_small_buffer)?;
-                buffer = &mut buffer[instance.ByteLength as usize..];
+                    buf,
+                ).map_err(error_internal)?;
             }
         }
-        Ok((object.TotalByteLength as _, buffer))
+        // if we got past the line above, then it is save to slice from TotalByteLength onward.
+        let rest = &mut buffer[object.TotalByteLength as usize..];
+        Ok((object.TotalByteLength as _, rest))
     }
 
     fn write_block<'a>(
@@ -141,17 +146,16 @@ pub trait PerfProvider {
         counters_block_template: &CountersBlockTemplate,
         now: PerfClock,
         buffer: &'a mut [u8],
-    ) -> Result<(usize, &'a mut [u8]), ()>
+    ) -> Result<&'a mut [u8], ()>
     {
         let counters = counters_block_template.counters();
-        let mut block = counters_block_template.buffer(buffer)?;
+        let mut block = counters_block_template.block(buffer)?;
         for (counter, counter_template) in counters.iter().zip(counter_templates) {
             let value = self.data(object_template, counter_template, instance_template, now);
             block.write(counter, value)?;
         }
-        let i = block.buffer.len();
-        drop(block);
-        Ok((i, &mut buffer[i..]))
+        let len = block.len();
+        buffer.get_mut(len..).ok_or(())
     }
 
     fn collect(&self, query: QueryType, mut buffer: &mut [u8]) -> WinResult<Collected> {
@@ -325,7 +329,7 @@ impl PerfObjectTypeTemplate {
         first_counter: DWORD,
         counters: &[PERF_COUNTER_DEFINITION],
         instances: Option<&[PERF_INSTANCE_DEFINITION]>,
-        block: PERF_COUNTER_BLOCK,
+        block: &PERF_COUNTER_BLOCK,
         now: PerfClock,
     ) -> PERF_OBJECT_TYPE
     {
@@ -355,38 +359,11 @@ impl PerfObjectTypeTemplate {
             PerfFreq: now.PerfFreq,
         }
     }
+}
 
-    pub fn write_with_layout<'a>(
-        &self,
-        raw: &PERF_OBJECT_TYPE,
-        buffer: &'a mut [u8],
-    ) -> Result<(usize, &'a mut [u8]), Box<dyn Error>>
-    {
-        unsafe {
-            copy_struct_into_buffer(raw, buffer).map_err(error_small_buffer)?;
-        }
-        Ok((raw.HeaderLength as usize, &mut buffer[raw.TotalByteLength as usize..]))
-    }
-
-    pub fn write_header<'a>(
-        &self,
-        first_counter: DWORD,
-        counters: &[PERF_COUNTER_DEFINITION],
-        instances: Option<&[PERF_INSTANCE_DEFINITION]>,
-        block: PERF_COUNTER_BLOCK,
-        now: PerfClock,
-        buffer: &'a mut [u8],
-    ) -> Result<(usize, &'a mut [u8]), Box<dyn Error>>
-    {
-        let layout = self.build_layout(
-            first_counter,
-            counters,
-            instances,
-            block,
-            now,
-        );
-        self.write_with_layout(&layout, buffer)
-    }
+fn write_object_type_header<'a>(object: &PERF_OBJECT_TYPE, buffer: &'a mut [u8]) -> Result<&'a mut [u8], ()> {
+    unsafe { copy_struct_into_buffer(object, buffer)? };
+    buffer.get_mut(object.HeaderLength as usize..).ok_or(())
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -451,6 +428,11 @@ impl PerfCounterDefinitionTemplate {
     }
 }
 
+fn write_counter_definition<'a>(counter: &PERF_COUNTER_DEFINITION, buffer: &'a mut [u8]) -> Result<&'a mut [u8], ()> {
+    unsafe { copy_struct_into_buffer(counter, buffer)? };
+    buffer.get_mut(counter.ByteLength as usize..).ok_or(())
+}
+
 #[derive(Debug)]
 pub struct PerfInstanceDefinitionTemplate<'a> {
     ParentObjectTitleIndex: DWORD,
@@ -500,18 +482,12 @@ impl<'a> PerfInstanceDefinitionTemplate<'a> {
     }
 
     /// Returns the rest of the buffer after this object
-    pub fn write_with_layout<'b>(&self, def: &PERF_INSTANCE_DEFINITION, buffer: &'b mut [u8]) -> Result<(usize, &'b mut [u8]), ()> {
+    pub fn write_with_layout<'b>(&self, def: &PERF_INSTANCE_DEFINITION, buffer: &'b mut [u8]) -> Result<&'b mut [u8], ()> {
         unsafe {
             copy_struct_into_buffer(def, buffer)?;
             copy_cstr_into_buffer(self.Name, buffer, def.NameOffset, def.NameLength)?;
         }
-        let len = def.ByteLength as usize;
-        Ok((len as usize, &mut buffer[len as usize..]))
-    }
-
-    pub fn write<'b>(&self, buffer: &'b mut [u8]) -> Result<(usize, &'b mut [u8]), ()> {
-        let layout = self.build_layout();
-        self.write_with_layout(&layout, buffer)
+        buffer.get_mut(def.ByteLength as usize..).ok_or(())
     }
 }
 
@@ -541,17 +517,16 @@ impl CountersBlockTemplate {
         &*self.counters
     }
 
-    pub fn block(&self) -> PERF_COUNTER_BLOCK {
+    pub fn build_layout(&self) -> PERF_COUNTER_BLOCK {
         PERF_COUNTER_BLOCK {
             ByteLength: self.ByteLength
         }
     }
 
-    pub fn buffer<'a>(&self, buffer: &'a mut [u8]) -> Result<CountersBlockBuffer<'a>, ()> {
-        unsafe { copy_struct_into_buffer(&self.block(), buffer)? };
-        Ok(CountersBlockBuffer {
-            buffer: buffer.get_mut(..self.ByteLength as usize).ok_or(())?
-        })
+    pub fn block<'a>(&self, buffer: &'a mut [u8]) -> Result<CountersBlockBuffer<'a>, ()> {
+        let slice = buffer.get_mut(..self.ByteLength as usize).ok_or(())?;
+        unsafe { copy_struct_into_buffer(&self.build_layout(), slice)? };
+        Ok(CountersBlockBuffer { buffer: slice })
     }
 }
 
@@ -560,14 +535,16 @@ pub struct CountersBlockBuffer<'a> {
 }
 
 impl<'a> CountersBlockBuffer<'a> {
+    pub fn len(&self) -> usize {
+        self.buffer.len()
+    }
+
     pub fn write<'b>(&mut self, def: &PERF_COUNTER_DEFINITION, value: CounterValue<'b>) -> Result<(), ()> {
         let offset = def.CounterOffset as usize;
         let length = def.CounterSize as usize;
         let slice = self.buffer.get_mut(offset..offset + length).ok_or(())?;
 
-        value.write(slice).map_err(drop)?;
-
-        Ok(())
+        value.write(slice).map_err(drop)
     }
 }
 
@@ -628,14 +605,19 @@ fn layout_of_instances(templates: &[PerfInstanceDefinitionTemplate]) -> Vec<PERF
 }
 
 fn error_small_buffer(_: ()) -> WinError {
-    WinError::new(ERROR_MORE_DATA)
+    WinError::new_with_message(ERROR_MORE_DATA)
 }
 
-unsafe fn copy_struct_into_buffer<'a, T>(source: &T, buffer: &'a mut [u8]) -> Result<(usize, &'a mut [u8]), ()> {
+fn error_internal(_: ()) -> WinError {
+    // any other ideas for an error code?
+    WinError::new_with_message(ERROR_ACCESS_DENIED)
+}
+
+unsafe fn copy_struct_into_buffer<'a, T>(source: &T, buffer: &'a mut [u8]) -> Result<&'a mut [u8], ()> {
     let size = size_of::<T>();
     let slice_u8 = buffer.get_mut(..size).ok_or(())?;
     slice_u8.as_mut_ptr().cast::<T>().copy_from_nonoverlapping(source as *const _, 1);
-    Ok((size, &mut buffer[size..]))
+    buffer.get_mut(size..).ok_or(())
 }
 
 unsafe fn copy_cstr_into_buffer(str: &U16CStr, buffer: &mut [u8], offset: DWORD, length: DWORD) -> Result<(), ()> {
@@ -648,14 +630,6 @@ unsafe fn copy_cstr_into_buffer(str: &U16CStr, buffer: &mut [u8], offset: DWORD,
     }
     slice_u8.copy_from_slice(str_u8);
     Ok(())
-}
-
-fn write_object_struct_header<'a>(object: &PERF_OBJECT_TYPE, buffer: &'a mut [u8]) -> Result<(usize, &'a mut [u8]), ()> {
-    unsafe { copy_struct_into_buffer(object, buffer) }
-}
-
-fn write_counter_definition<'a>(counter: &PERF_COUNTER_DEFINITION, buffer: &'a mut [u8]) -> Result<(usize, &'a mut [u8]), ()> {
-    unsafe { copy_struct_into_buffer(counter, buffer) }
 }
 
 #[cfg(test)]
