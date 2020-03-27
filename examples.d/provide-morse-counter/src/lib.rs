@@ -323,7 +323,8 @@ impl RandomJokeProvider {
         let resp: serde_json::Value = reqwest::blocking::get(URL)?
             .json()?;
         let joke = Self::get_in(&resp).ok_or("invalid json")?;
-        Ok(joke.to_string())
+        let joke = xml::unescape(&joke).unwrap_or(joke.to_string());
+        Ok(joke)
     }
 
     fn get_in(json: &serde_json::Value) -> Option<&str> {

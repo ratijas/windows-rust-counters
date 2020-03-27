@@ -20,6 +20,7 @@ reqwest = { version = "0.10", features = ["blocking", "json"] }
 tokio = { version = "0.2", features = ["full"] }
 serde_json = "1"
 serde = "1"
+RustyXML = "0.3.0"
 
 # temporary workaround.  at the time of writing, 1.0.3 just came out and broke the build.
 quote = "=1.0.1"
