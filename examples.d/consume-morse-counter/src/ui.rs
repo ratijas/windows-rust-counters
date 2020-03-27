@@ -14,6 +14,15 @@ use crate::{App, Stats};
 use std::borrow::Cow;
 use tui::widgets::{Axis, Dataset, Marker};
 
+// colors
+const COLOR_PRIMARY: Color = Color::Cyan;
+const COLOR_SECONDARY: Color = Color::Magenta;
+const COLOR_SECONDARY_VARIANT: Color = Color::LightMagenta;
+#[allow(unused)]
+const COLOR_ON_PRIMARY: Color = Color::White;
+const COLOR_ON_SECONDARY: Color = Color::White;
+const COLOR_ON_BACKGROUND: Color = Color::Reset;
+
 pub fn draw<B>(f: &mut Frame<B>, app: &mut App) -> io::Result<()>
     where
         B: Backend,
@@ -27,19 +36,17 @@ pub fn draw<B>(f: &mut Frame<B>, app: &mut App) -> io::Result<()>
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .margin(0)
         .constraints([
             Constraint::Length(4),
-            Constraint::Length(3),
             Constraint::Min(0)
         ].as_ref())
         .split(area);
 
     draw_header(f, app, chunks[0])?;
-    draw_tabs(f, app, chunks[1])?;
+    let chunk = draw_tabs(f, app, chunks[1])?;
     match active_stat(app) {
-        Some(stat) => draw_stat(f, app, stat, chunks[2])?,
-        None => draw_placeholder(f, app, chunks[2])?,
+        Some(stat) => draw_stat(f, app, stat, chunk)?,
+        None => draw_placeholder(f, app, chunk)?,
     }
     Ok(())
 }
@@ -54,30 +61,45 @@ fn draw_header<B>(f: &mut Frame<B>, app: &mut App, area: Rect) -> io::Result<()>
     Paragraph::new(text.iter())
         .alignment(Alignment::Center)
         .block(Block::default()
-            .title(&object.name_value)
             .borders(Borders::ALL)
-            .style(Style::default().fg(Color::Magenta))
-            .title_style(Style::default().fg(Color::LightMagenta).modifier(Modifier::BOLD))
+            .title(&object.name_value)
+            .title_style(Style::default().fg(COLOR_PRIMARY))
+            .style(Style::default().fg(COLOR_ON_BACKGROUND))
         )
         .wrap(true)
         .render(f, area);
     Ok(())
 }
 
-fn draw_tabs<B>(f: &mut Frame<B>, app: &mut App, area: Rect) -> io::Result<()>
+/// Returns sub-chunk of the rest area.
+fn draw_tabs<B>(f: &mut Frame<B>, app: &mut App, area: Rect) -> io::Result<Rect>
     where B: Backend
 {
     let tabs = app.stats_read().iter().map(|s| s.counter.name_value.clone()).collect::<Vec<_>>();
     let selected_index = active_counter_index(app).unwrap_or(usize::MAX);
 
     Tabs::default()
-        .block(Block::default().borders(Borders::ALL).title("Counters"))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Counters")
+                .title_style(Style::default().fg(COLOR_PRIMARY))
+        )
         .titles(&tabs)
         .select(selected_index)
-        .style(Style::default().fg(Color::Cyan))
-        .highlight_style(Style::default().fg(Color::White).bg(Color::Magenta).modifier(Modifier::BOLD))
+        .style(Style::default().fg(COLOR_ON_BACKGROUND))
+        .highlight_style(Style::default().fg(COLOR_ON_SECONDARY).bg(COLOR_SECONDARY).modifier(Modifier::BOLD))
         .render(f, area);
-    Ok(())
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(2),
+            Constraint::Min(0)
+        ].as_ref())
+        .split(area);
+
+    Ok(chunks[1])
 }
 
 fn draw_stat<B>(f: &mut Frame<B>, app: &mut App, stat: Stats, area: Rect) -> io::Result<()>
@@ -95,32 +117,14 @@ fn draw_stat<B>(f: &mut Frame<B>, app: &mut App, stat: Stats, area: Rect) -> io:
         ].as_ref())
         .split(area);
 
-    Block::default()
-        .borders(Borders::ALL)
-        .title(&*stat.counter.name_value)
-        .title_style(Style::default().fg(Color::Magenta).modifier(Modifier::BOLD))
-        .render(f, area);
-
     Paragraph::new([
         Text::raw(&stat.counter.help_value),
         Text::raw("\n\n"),
     ].iter())
         .alignment(Alignment::Center)
         .wrap(true)
+        .style(Style::default().fg(COLOR_ON_BACKGROUND))
         .render(f, chunks[0]);
-
-    if let Some(figure) = app.view.font.convert(&stat.decoded) {
-        let string = figure.to_string();
-        let string = trim_lines_to_width(&*string, Alignment::Right, chunks[2]);
-        let text = [
-            Text::raw(Cow::from(string))
-        ];
-        Paragraph::new(text.iter())
-            .wrap(false)
-            .alignment(Alignment::Right)
-            .style(Style::default().fg(Color::Red).modifier(Modifier::BOLD))
-            .render(f, chunks[2]);
-    }
 
     let text = pretty_signal(&stat.signal_bool);
     let text = trim_lines_to_width(&text, Alignment::Right, chunks[1]);
@@ -131,10 +135,23 @@ fn draw_stat<B>(f: &mut Frame<B>, app: &mut App, stat: Stats, area: Rect) -> io:
         .alignment(Alignment::Right)
         .block(Block::default()
             .title("Decoded signal")
-            .title_style(Style::default().fg(Color::Cyan))
+            .title_style(Style::default().fg(COLOR_PRIMARY))
             .borders(Borders::TOP))
-        .style(Style::default().fg(Color::Cyan))
+        .style(Style::default().fg(COLOR_SECONDARY_VARIANT))
         .render(f, chunks[1]);
+
+    if let Some(figure) = app.view.font.convert(&stat.decoded) {
+        let string = figure.to_string();
+        let string = trim_lines_to_width(&*string, Alignment::Right, chunks[2]);
+        let text = [
+            Text::raw(Cow::from(string))
+        ];
+        Paragraph::new(text.iter())
+            .wrap(false)
+            .alignment(Alignment::Right)
+            .style(Style::default().fg(COLOR_ON_BACKGROUND).modifier(Modifier::BOLD))
+            .render(f, chunks[2]);
+    }
 
     let data = stat.signal_raw
         .iter()
@@ -152,7 +169,7 @@ fn draw_stat<B>(f: &mut Frame<B>, app: &mut App, stat: Stats, area: Rect) -> io:
         .x_axis(
             Axis::default()
                 .title("Time")
-                .style(Style::default().fg(Color::DarkGray))
+                .style(Style::default().fg(COLOR_ON_BACKGROUND))
                 .labels_style(Style::default().modifier(Modifier::ITALIC))
                 .bounds([0f64, 100f64]) // last 100 values
                 .labels(&["Last"]),
@@ -160,7 +177,7 @@ fn draw_stat<B>(f: &mut Frame<B>, app: &mut App, stat: Stats, area: Rect) -> io:
         .y_axis(
             Axis::default()
                 .title("Counter value")
-                .style(Style::default().fg(Color::Gray))
+                .style(Style::default().fg(COLOR_ON_BACKGROUND))
                 .labels_style(Style::default().modifier(Modifier::ITALIC))
                 .bounds([0.0, 100.0])
                 .labels(&["0", "20", "40", "60", "80", "100"]),
@@ -169,7 +186,7 @@ fn draw_stat<B>(f: &mut Frame<B>, app: &mut App, stat: Stats, area: Rect) -> io:
             Dataset::default()
                 .name("PERF_NO_INSTANCES")
                 .marker(Marker::Dot)
-                .style(Style::default().fg(Color::Cyan))
+                .style(Style::default().fg(Color::Green))
                 .data(&data),
         ])
         .render(f, chunks[3]);
