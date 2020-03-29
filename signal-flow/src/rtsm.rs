@@ -7,6 +7,7 @@ pub type Signal = bool;
 pub const ON: Signal = true;
 pub const OFF: Signal = false;
 
+#[derive(Clone)]
 pub struct RtsmRanges<T> {
     off: Range<T>,
     on: Range<T>,
@@ -41,12 +42,22 @@ pub struct RtsmTx<X: Tx> {
     current: Option<Signal>,
 }
 
+struct RtsmRxCore<T> {
+    off: Range<T>,
+    on: Range<T>,
+    last: Option<T>,
+}
+
 /// RTSM-proto (Ratijas Slow-Mode Protocol) receiver.
 pub struct RtsmRx<X: Rx> {
     rx: X,
-    off: Range<X::Item>,
-    on: Range<X::Item>,
-    last: Option<X::Item>,
+    rtsm: RtsmRxCore<X::Item>,
+}
+
+pub struct RtsmMultiRx<W: Rx, T, F> {
+    rx: W,
+    factory: F,
+    rtsm: Vec<RtsmRxCore<T>>,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq)]
@@ -69,6 +80,16 @@ pub trait RtsmRxExt: Rx {
               Self::Item: SignalValue
     {
         RtsmRx::new(ranges, self)
+    }
+
+    fn rtsm_multi<T, F>(self, ranges_factory: F) -> RtsmMultiRx<Self, T, F>
+        where Self: Sized,
+              Self: Rx,
+              Self::Item: IntoIterator<Item=T>,
+              T: SignalValue + 'static,
+              F: FnMut(usize) -> RtsmRanges<T>
+    {
+        RtsmMultiRx::new(ranges_factory, self)
     }
 }
 
@@ -200,19 +221,18 @@ mod imp {
         }
     }
 
-    impl<X: Rx> RtsmRx<X>
-        where X::Item: SignalValue
+    impl<T> RtsmRxCore<T>
+        where T: SignalValue
     {
-        pub fn new(ranges: RtsmRanges<X::Item>, rx: X) -> Self {
-            RtsmRx {
-                rx,
+        pub fn new(ranges: RtsmRanges<T>) -> Self {
+            RtsmRxCore {
                 off: ranges.off,
                 on: ranges.on,
                 last: None,
             }
         }
 
-        fn signal_for_value(&self, value: X::Item) -> Result<Signal, ()> {
+        fn signal_for_value(&self, value: T) -> Result<Signal, ()> {
             if self.off.contains(&value) {
                 Ok(OFF)
             } else if self.on.contains(&value) {
@@ -222,7 +242,7 @@ mod imp {
             }
         }
 
-        fn decode(&mut self, value: X::Item) -> Result<Option<Signal>, DecodeError<X::Item>> {
+        pub fn decode(&mut self, value: T) -> Result<Option<Signal>, DecodeError<T>> {
             match &self.last {
                 // signal stays still
                 Some(last_value) if &value == last_value => {
@@ -243,21 +263,17 @@ mod imp {
                 }
             }
         }
+    }
 
-        // /// Decode the whole signal at once, or fail at first erroneous value.
-        // fn decode_all(&mut self, values: &[X::Item]) -> Result<Vec<Signal>, DecodeError<X::Item>> {
-        //     values.iter()
-        //         .cloned()
-        //         .map(|v| self.decode(v))
-        //         .filter_map(|res|
-        //             // Result<Option<T>, E> -> Option<Result<T, E>>
-        //             match res {
-        //                 Ok(None) => None,
-        //                 Ok(Some(signal)) => Some(Ok(signal)),
-        //                 Err(e) => Some(Err(e)),
-        //             }
-        //         ).collect()
-        // }
+    impl<X: Rx> RtsmRx<X>
+        where X::Item: SignalValue
+    {
+        pub fn new(ranges: RtsmRanges<X::Item>, rx: X) -> Self {
+            RtsmRx {
+                rx,
+                rtsm: RtsmRxCore::new(ranges),
+            }
+        }
     }
 
     impl<X: Rx> Rx for RtsmRx<X>
@@ -269,12 +285,89 @@ mod imp {
             loop {
                 match self.rx.recv()? {
                     None => return Ok(None),
-                    Some(value) => match self.decode(value)? {
+                    Some(value) => match self.rtsm.decode(value)? {
                         None => { /* repeat with next inner value */ }
                         Some(signal) => return Ok(Some(signal)),
                     }
                 }
             }
+        }
+    }
+
+    impl<W, T, F> RtsmMultiRx<W, T, F>
+        where W: Rx,
+              W::Item: IntoIterator<Item=T>,
+              T: SignalValue + 'static,
+              F: FnMut(usize) -> RtsmRanges<T>
+    {
+        pub fn new(factory: F, rx: W) -> Self {
+            RtsmMultiRx {
+                rx,
+                factory,
+                rtsm: vec![],
+            }
+        }
+
+        /// Ensure `rtsm[index]` exists by creating it on-demand using the ranges factory.
+        fn get_rtsm(&mut self, index: usize) -> &mut RtsmRxCore<T> {
+            for i in self.rtsm.len()..=index {
+                let ranges = (self.factory)(i);
+                let core = RtsmRxCore::new(ranges);
+                self.rtsm.push(core);
+            }
+            &mut self.rtsm[index]
+        }
+    }
+
+    impl<W, T, F> Rx for RtsmMultiRx<W, T, F>
+        where W: Rx,
+              W::Item: IntoIterator<Item=T>,
+              T: SignalValue + 'static,
+              F: FnMut(usize) -> RtsmRanges<<W::Item as IntoIterator>::Item>
+    {
+        type Item = Vec<Signal>;
+
+        fn recv(&mut self) -> Result<Option<Self::Item>, Box<dyn Error>> {
+            loop {
+                match self.rx.recv()? {
+                    None => return Ok(None),
+                    Some(vec) => {
+                        let mut opt = vec![];
+                        // must collect from each rtsm regardless of the intermediate result
+                        for (i, item) in vec.into_iter().enumerate() {
+                            let rtsm = self.get_rtsm(i);
+                            let maybe = rtsm.decode(item)?;
+                            opt.push(maybe);
+                        }
+                        match transform_opt_vec(opt)? {
+                            None => { /* repeat with next inner value */ }
+                            Some(out) => return Ok(Some(out)),
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fn transform_opt_vec<T>(v: Vec<Option<T>>) -> Result<Option<Vec<T>>, Box<dyn Error>> {
+        // "all" predicates start with `true` until proved otherwise.
+        let mut all_some = true;
+        let mut all_none = true;
+        let mut out = Vec::with_capacity(v.len());
+        for opt in v.into_iter() {
+            match opt {
+                Some(t) => {
+                    all_none = false;
+                    out.push(t);
+                }
+                None => all_some = false,
+            }
+        }
+        match (all_some, all_none) {
+            (false, false) => Err("Some Rtsm returned value, while others not".into()),
+            (true, true) => /* empty vector, nothing to decode */ Ok(Some(out)),
+            (true, _) => Ok(Some(out)),
+            (_, true) => Ok(None),
         }
     }
 
@@ -370,5 +463,28 @@ mod test {
 
         let res = rtsm.collect_vec().unwrap();
         assert_eq!(res, SIGNAL_DUP);
+    }
+
+    #[test]
+    fn test_multi() {
+        let values = vec![
+            vec![10, 0, 10],
+            vec![0, 10, 0],
+            vec![10, 11, 10],
+            vec![0, 12, 11],
+        ];
+        let signal = [
+            [ON, OFF, ON],
+            [OFF, ON, OFF],
+            [ON, ON, ON],
+            [OFF, ON, ON],
+        ];
+        let ranges = RtsmRanges::new(0..10, 10..20).unwrap();
+
+        let rtsm = IteratorRx::new(values.into_iter())
+            .rtsm_multi(|_| ranges.clone());
+
+        let res = rtsm.collect_vec().unwrap();
+        assert_eq!(res, signal);
     }
 }

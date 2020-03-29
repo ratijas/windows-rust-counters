@@ -286,6 +286,7 @@ dependencies = [
  "tui",
  "win-high",
  "win-low",
+ "winapi 0.3.8",
 ]
 
 [[package]]

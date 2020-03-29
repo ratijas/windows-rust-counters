@@ -26,6 +26,17 @@ pub trait Rx {
         MapRx::new(self, f)
     }
 
+    fn and_then<F>(self, f: F) -> AndThenRx<Self, F> where Self: Sized {
+        AndThenRx::new(self, f)
+    }
+
+    fn flatten<T>(self) -> FlattenRx<Self, T>
+        where Self: Sized,
+              Self::Item: IntoIterator,
+    {
+        FlattenRx::new(self)
+    }
+
     fn collect<B: FromIterator<Self::Item>>(self) -> Result<B, Box<dyn Error>> where Self: Sized {
         RxIteratorAdapter::new(self).collect()
     }
@@ -156,7 +167,6 @@ impl<R: Rx> Rx for FuseRx<R> {
 }
 
 
-
 impl<R: Rx> Rx for Interval<R, IntervalRoleRx> {
     type Item = R::Item;
 
@@ -189,6 +199,67 @@ impl<R: Rx, F, U> Rx for MapRx<R, F>
 }
 
 
+pub struct AndThenRx<R, F> {
+    inner: R,
+    f: F,
+}
+
+impl<R, F> AndThenRx<R, F> {
+    pub fn new(inner: R, f: F) -> Self {
+        AndThenRx { inner, f }
+    }
+}
+
+impl<R: Rx, F, U> Rx for AndThenRx<R, F>
+    where F: FnMut(&mut R) -> Result<Option<U>, Box<dyn Error>>
+{
+    type Item = U;
+
+    fn recv(&mut self) -> Result<Option<Self::Item>, Box<dyn Error>> {
+        (self.f)(&mut self.inner)
+    }
+}
+
+
+pub struct FlattenRx<R, T> {
+    inner: R,
+    buffer: Vec<T>,
+}
+
+impl<R, T> FlattenRx<R, T> {
+    pub fn new(inner: R) -> Self {
+        FlattenRx {
+            inner,
+            buffer: Vec::new(),
+        }
+    }
+}
+
+impl<R, T> Rx for FlattenRx<R, T>
+    where R: Rx<Item=Vec<T>>
+{
+    type Item = T;
+
+    fn recv(&mut self) -> Result<Option<Self::Item>, Box<dyn Error>> {
+        if !self.buffer.is_empty() {
+            Ok(Some(self.buffer.remove(0)))
+        } else {
+            match self.inner.recv()? {
+                None => Ok(None),
+                Some(vec) => {
+                    self.buffer = vec;
+                    if !self.buffer.is_empty() {
+                        Ok(Some(self.buffer.remove(0)))
+                    } else {
+                        Ok(None)
+                    }
+                }
+            }
+        }
+    }
+}
+
+
 pub struct RxIteratorAdapter<R> {
     inner: R
 }
@@ -214,7 +285,6 @@ impl<R: Rx> Iterator for RxIteratorAdapter<R> {
 }
 
 
-
 pub struct IteratorRx<I> {
     iter: I
 }
@@ -238,7 +308,7 @@ impl<I> Rx for IteratorRx<I>
 }
 
 impl<I> From<I> for IteratorRx<I::IntoIter>
-where I: IntoIterator
+    where I: IntoIterator
 {
     fn from(from: I) -> Self {
         Self::new(from.into_iter())

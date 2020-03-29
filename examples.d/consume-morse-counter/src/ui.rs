@@ -1,18 +1,20 @@
+use std::borrow::Cow;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use std::io;
 
 use tui::{
     backend::Backend,
     Frame,
     widgets::{
-        Block, Chart, Paragraph, Text, Widget, Borders, Tabs,
+        Block, Borders, Chart, Paragraph, Tabs, Text, Widget,
     },
 };
+use tui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use tui::style::{Color, Modifier, Style};
-use tui::layout::{Constraint, Direction, Layout, Rect, Alignment};
-
-use crate::{App, Stats};
-use std::borrow::Cow;
 use tui::widgets::{Axis, Dataset, Marker};
+
+use crate::{App, CounterStats};
 
 // colors
 const COLOR_PRIMARY: Color = Color::Cyan;
@@ -28,7 +30,8 @@ pub fn draw<B>(f: &mut Frame<B>, app: &mut App) -> io::Result<()>
         B: Backend,
 {
     let area = f.size();
-    fix_active_counter(app);
+    // let _lock = app.stats_read();
+    print!("");
 
     Block::default()
         .style(Style::default())
@@ -46,15 +49,15 @@ pub fn draw<B>(f: &mut Frame<B>, app: &mut App) -> io::Result<()>
     let chunk = draw_tabs(f, app, chunks[1])?;
     match active_stat(app) {
         Some(stat) => draw_stat(f, app, stat, chunk)?,
-        None => draw_placeholder(f, app, chunk)?,
+        None => draw_placeholder(f, chunk)?,
     }
     Ok(())
 }
 
-fn draw_header<B>(f: &mut Frame<B>, app: &mut App, area: Rect) -> io::Result<()>
+fn draw_header<B>(f: &mut Frame<B>, app: &App, area: Rect) -> io::Result<()>
     where B: Backend
 {
-    let object = app.object();
+    let object = app.stats_read().meta.clone();
     let text = [
         Text::raw(&object.help_value),
     ];
@@ -72,11 +75,11 @@ fn draw_header<B>(f: &mut Frame<B>, app: &mut App, area: Rect) -> io::Result<()>
 }
 
 /// Returns sub-chunk of the rest area.
-fn draw_tabs<B>(f: &mut Frame<B>, app: &mut App, area: Rect) -> io::Result<Rect>
+fn draw_tabs<B>(f: &mut Frame<B>, app: &App, area: Rect) -> io::Result<Rect>
     where B: Backend
 {
-    let tabs = app.stats_read().iter().map(|s| s.counter.name_value.clone()).collect::<Vec<_>>();
-    let selected_index = active_counter_index(app).unwrap_or(usize::MAX);
+    let tabs = app.stats_read().counters.iter().map(|s| s.meta.name_value.clone()).collect::<Vec<_>>();
+    let selected_index = app.active_counter_index().unwrap_or(usize::MAX);
 
     Tabs::default()
         .block(
@@ -102,7 +105,7 @@ fn draw_tabs<B>(f: &mut Frame<B>, app: &mut App, area: Rect) -> io::Result<Rect>
     Ok(chunks[1])
 }
 
-fn draw_stat<B>(f: &mut Frame<B>, app: &mut App, stat: Stats, area: Rect) -> io::Result<()>
+fn draw_stat<B>(f: &mut Frame<B>, app: &App, stat: CounterStats, area: Rect) -> io::Result<()>
     where B: Backend
 {
     let chunks = Layout::default()
@@ -118,7 +121,7 @@ fn draw_stat<B>(f: &mut Frame<B>, app: &mut App, stat: Stats, area: Rect) -> io:
         .split(area);
 
     Paragraph::new([
-        Text::raw(&stat.counter.help_value),
+        Text::raw(&stat.meta.help_value),
         Text::raw("\n\n"),
     ].iter())
         .alignment(Alignment::Center)
@@ -126,7 +129,7 @@ fn draw_stat<B>(f: &mut Frame<B>, app: &mut App, stat: Stats, area: Rect) -> io:
         .style(Style::default().fg(COLOR_ON_BACKGROUND))
         .render(f, chunks[0]);
 
-    let text = pretty_signal(&stat.signal_bool);
+    let text = pretty_signal(&*stat.signal.iter().cloned().collect::<Vec<_>>());
     let text = trim_lines_to_width(&text, Alignment::Right, chunks[1]);
     Paragraph::new([
         Text::raw(Cow::from(text)),
@@ -155,12 +158,26 @@ fn draw_stat<B>(f: &mut Frame<B>, app: &mut App, stat: Stats, area: Rect) -> io:
             .render(f, chunks[2]);
     }
 
-    let data = stat.signal_raw
-        .iter()
-        .rev()
-        .cloned().zip((0..100).rev())
-        .map(|(y, x)| (x as f64, y as f64))
-        .collect::<Vec<_>>();
+    let dataset_owned: Vec<_> = stat.instances.iter().map(|instance| {
+        let data = instance.signal
+            .iter()
+            .rev()
+            .cloned().zip((0..100).rev())
+            .map(|(y, x)| (x as f64, y as f64))
+            .collect::<Vec<_>>();
+        let name = format!("{}: {}",
+                           instance.instance_id,
+                           instance.signal.back().unwrap_or(&0));
+        let color = color_for(&instance.instance_id);
+        (name, data, color)
+    }).collect();
+    let dataset_ref: Vec<_> = dataset_owned.iter().map(|(name, data, color)| {
+        Dataset::default()
+            .name(name)
+            .marker(if stat.instances.len() <=4 { Marker::Dot } else { Marker::Braille })
+            .style(Style::default().fg(*color))
+            .data(&data)
+    }).collect();
     Chart::default()
         .block(
             Block::default()
@@ -184,18 +201,23 @@ fn draw_stat<B>(f: &mut Frame<B>, app: &mut App, stat: Stats, area: Rect) -> io:
                 .bounds([0.0, 100.0])
                 .labels(&["0", "20", "40", "60", "80", "100"]),
         )
-        .datasets(&[
-            Dataset::default()
-                .name("PERF_NO_INSTANCES")
-                .marker(Marker::Dot)
-                .style(Style::default().fg(Color::Green))
-                .data(&data),
-        ])
+        .datasets(&dataset_ref)
         .render(f, chunks[3]);
     Ok(())
 }
 
-fn draw_placeholder<B>(f: &mut Frame<B>, _app: &mut App, area: Rect) -> io::Result<()>
+fn calculate_hash<T: Hash>(t: &T) -> u64 {
+    let mut s = DefaultHasher::new();
+    t.hash(&mut s);
+    s.finish()
+}
+
+fn color_for<T: Hash>(t: &T) -> Color {
+    let colors = [Color::Green, Color::Blue, Color::Red, Color::Magenta];
+    colors[(1 + calculate_hash(t)) as usize % colors.len()]
+}
+
+fn draw_placeholder<B>(f: &mut Frame<B>, area: Rect) -> io::Result<()>
     where B: Backend
 {
     Paragraph::new([].iter())
@@ -206,24 +228,9 @@ fn draw_placeholder<B>(f: &mut Frame<B>, _app: &mut App, area: Rect) -> io::Resu
     Ok(())
 }
 
-fn fix_active_counter(app: &mut App) {
-    let found = active_counter_index(app).is_some();
-    let empty = app.stats_read().first().is_none();
-    if !found && !empty {
-        let lock = app.stats_read();
-        let it = lock.first().unwrap().counter.name_index;
-        drop(lock);
-        app.view.active_counter = it;
-    }
-}
-
-fn active_counter_index(app: &mut App) -> Option<usize> {
-    app.stats_read().iter().position(|s| s.counter.name_index == app.view.active_counter)
-}
-
-fn active_stat(app: &mut App) -> Option<Stats> {
-    let selected_index = active_counter_index(app)?;
-    app.stats_read().get(selected_index).cloned()
+fn active_stat(app: &App) -> Option<CounterStats> {
+    let selected_index = app.active_counter_index()?;
+    app.stats_read().counters.get(selected_index).cloned()
 }
 
 fn trim_lines_to_width(input: &str, alignment: Alignment, area: Rect) -> String {

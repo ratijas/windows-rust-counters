@@ -1,3 +1,5 @@
+use std::mem::size_of;
+
 use crate::prelude::v1::*;
 
 const INITIAL_BUFFER_SIZE: usize = 8 * 1024;
@@ -9,7 +11,7 @@ pub fn query_value(
     hkey: HKEY,
     value_name: &str,
     value_type: Option<&mut DWORD>,
-    buffer_size_hint: Option<usize>
+    buffer_size_hint: Option<usize>,
 ) -> WinResult<Vec<u8>>
 {
     let mut buffer = Vec::new();
@@ -23,6 +25,35 @@ pub fn query_value(
     Ok(buffer)
 }
 
+pub fn query_value_dword(
+    hkey: HKEY,
+    value_name: &str,
+) -> WinResult<DWORD> {
+    let mut value_type = 0;
+    let buffer = query_value(
+        hkey,
+        value_name,
+        Some(&mut value_type),
+        Some(size_of::<DWORD>()),
+    )?;
+    if (value_type & RRF_RT_REG_DWORD) != 0 {
+        return Err(WinError::new(ERROR_INVALID_DATA)
+            .with_comment(format!(
+                "Unexpected data type in registry. Expected DWORD, got: {:#10x}", value_type)));
+    }
+    if buffer.len() != size_of::<DWORD>() {
+        return Err(WinError::new(ERROR_INVALID_DATA)
+            .with_comment(format!(
+                "Unexpected buffer size for type DWORD. Expected: {}, got: {}", size_of::<DWORD>(), buffer.len())));
+    }
+    let num = {
+        let mut bytes = [0; size_of::<DWORD>()];
+        bytes.copy_from_slice(&buffer[..]);
+        DWORD::from_ne_bytes(bytes)
+    };
+    Ok(num)
+}
+
 /// Query registry value of potentially unknown size, reallocating larger buffer in a loop as needed.
 /// Given buffer will be cleared and overridden with zeroes before usage.
 /// # Panics
@@ -32,7 +63,7 @@ pub fn query_value_with_buffer(
     value_name: &str,
     value_type: Option<&mut DWORD>,
     buffer_size_hint: Option<usize>,
-    buffer: &mut Vec<u8>
+    buffer: &mut Vec<u8>,
 ) -> WinResult<()>
 {
     // prepare value name with trailing NULL char

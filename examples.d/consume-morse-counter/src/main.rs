@@ -1,10 +1,12 @@
 use std::{
+    collections::VecDeque,
     error::Error,
     io::{stdout, Write},
-    sync::{mpsc, Arc},
+    sync::{Arc, mpsc},
     thread,
     time::Duration,
 };
+use std::sync::{RwLock, RwLockReadGuard};
 
 use argh::FromArgs;
 use crossterm::{
@@ -12,6 +14,8 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
+use crossterm::event::KeyEvent;
+use figlet_rs::FIGfont;
 use tui::{
     backend::CrosstermBackend,
     Terminal,
@@ -23,72 +27,105 @@ use win_high::{
     perf::{
         consume::{CounterMeta, get_counters_info, UseLocale},
         nom::*,
-        values::CounterValue,
+        values::CounterVal,
     },
     prelude::v1::*,
 };
 use win_high::perf::consume::AllCounters;
-use std::sync::{RwLock, RwLockWriteGuard, RwLockReadGuard};
-use crossterm::event::KeyEvent;
-use figlet_rs::FIGfont;
+use win_high::perf::useful::InstanceId;
 
+mod reg;
 mod ui;
 
 /// Morse decoder from performance counter
 #[derive(Debug, FromArgs)]
 struct Cli {
     /// counter object type's name index.
-    #[argh(positional)]
+    #[argh(positional, default = "crate::reg::get_object_name_index()")]
     object: u32,
     /// time in ms between two ticks.
-    #[argh(option, default = "250")]
-    tick: u32,
+    #[argh(option, from_str_fn(parse_tick_duration), default = "crate::reg::get_tick_interval()")]
+    tick: Duration,
+}
+
+fn parse_tick_duration(value: &str) -> Result<Duration, String> {
+    let millis = value.parse::<u64>().map_err(|_| "Unable to parse tick duration")?;
+    if millis < 10 {
+        return Err("Tick duration is too short".into());
+    }
+    Ok(Duration::from_millis(millis))
 }
 
 pub struct Decoder {
     counter: CounterMeta,
-    tx: SenderTx<DWORD>,
+    tx: SenderTx<Vec<DataPair>>,
     thread_handle: thread::JoinHandle<()>,
 }
 
 #[derive(Clone, Debug)]
-pub struct Stats {
-    pub counter: CounterMeta,
-    pub decoded: String,
-    pub signal_bool: Vec<bool>,
-    pub signal_raw: Vec<u32>,
+pub struct ObjectStats {
+    pub meta: CounterMeta,
+    pub counters: Vec<CounterStats>,
 }
 
-pub type VecStats = Vec<Stats>;
-
-pub type ArcVecStats = Arc<RwLock<VecStats>>;
+#[derive(Clone, Debug)]
+pub struct CounterStats {
+    pub meta: CounterMeta,
+    pub decoded: String,
+    pub signal: VecDeque<bool>,
+    pub instances: Vec<InstanceStats>,
+}
 
 const HIST_SIZE: usize = 200;
 
-impl Stats {
-    pub fn new(counter: CounterMeta) -> Self {
-        Stats {
-            counter,
+#[derive(Clone, Debug)]
+pub struct InstanceStats {
+    pub instance_id: InstanceId,
+    pub name: String,
+    pub signal: VecDeque<DWORD>,
+}
+
+impl ObjectStats {
+    pub fn new(meta: CounterMeta) -> Self {
+        ObjectStats {
+            meta,
+            counters: vec![],
+        }
+    }
+
+    pub fn counter_mut(&mut self, meta: &CounterMeta) -> &mut CounterStats {
+        let index = self.counters.iter().position(|c| c.meta.name_index == meta.name_index);
+        match index {
+            Some(index) => &mut self.counters[index],
+            None => {
+                self.counters.push(CounterStats::new(meta.clone()));
+                self.counters.sort_by(|left, right| left.meta.name_index.cmp(&right.meta.name_index));
+                self.counters.last_mut().unwrap()
+            }
+        }
+    }
+}
+
+impl CounterStats {
+    pub fn new(meta: CounterMeta) -> Self {
+        CounterStats {
+            meta,
             decoded: String::with_capacity(HIST_SIZE),
-            signal_bool: Vec::with_capacity(HIST_SIZE),
-            signal_raw: Vec::with_capacity(HIST_SIZE),
+            signal: VecDeque::with_capacity(HIST_SIZE),
+            instances: vec![],
         }
     }
 
-    fn drop_first<T>(vec: &mut Vec<T>) {
-        if vec.len() >= HIST_SIZE {
-            vec.remove(0);
+    pub fn instance_mut(&mut self, instance_id: &InstanceId) -> &mut InstanceStats {
+        let index = self.instances.iter().position(|i| &i.instance_id == instance_id);
+        match index {
+            Some(index) => &mut self.instances[index],
+            None => {
+                self.instances.push(InstanceStats::new(instance_id.clone()));
+                self.instances.sort_by(|left, right| left.instance_id.cmp(&right.instance_id));
+                self.instances.last_mut().unwrap()
+            }
         }
-    }
-
-    pub fn push_raw(&mut self, raw: u32) {
-        Self::drop_first(&mut self.signal_raw);
-        self.signal_raw.push(raw);
-    }
-
-    pub fn push_bool(&mut self, bool: bool) {
-        Self::drop_first(&mut self.signal_bool);
-        self.signal_bool.push(bool);
     }
 
     pub fn push_char(&mut self, char: char) {
@@ -97,16 +134,44 @@ impl Stats {
         }
         self.decoded.push(char);
     }
+
+    pub fn push_signal(&mut self, signal: bool) {
+        while self.signal.len() >= HIST_SIZE {
+            self.signal.pop_front();
+        }
+        self.signal.push_back(signal);
+    }
+}
+
+impl InstanceStats {
+    pub fn new(instance_id: InstanceId) -> Self {
+        InstanceStats {
+            name: instance_id.name().to_string_lossy(),
+            instance_id,
+            signal: VecDeque::with_capacity(HIST_SIZE),
+        }
+    }
+
+    fn trim<T>(vec: &mut VecDeque<T>) {
+        while vec.len() >= HIST_SIZE {
+            vec.pop_front();
+        }
+    }
+
+    pub fn push_signal(&mut self, signal: u32) {
+        Self::trim(&mut self.signal);
+        self.signal.push_back(signal);
+    }
 }
 
 pub struct App {
-    pub title: String,
     inner: AppInner,
     view: ViewState,
 }
 
+pub type ArcVecStats = Arc<RwLock<ObjectStats>>;
+
 pub struct AppInner {
-    object: CounterMeta,
     all_counters: AllCounters,
     stats: ArcVecStats,
     decoders: Vec<Decoder>,
@@ -118,42 +183,39 @@ pub struct ViewState {
 }
 
 impl App {
-    pub fn new(title: &str, object_index: u32) -> WinResult<Self> {
+    pub fn new(object_index: u32) -> WinResult<Self> {
         let all_counters = get_counters_info(None, UseLocale::UIDefault)?;
         let object = all_counters.get(object_index).ok_or(WinError::new(ERROR_INVALID_DATA))?;
-        let stats = Arc::new(RwLock::new(vec![]));
+        let stats = Arc::new(RwLock::new(ObjectStats::new(object.clone())));
 
         let inner = AppInner {
-            object: object.clone(),
             all_counters,
             stats,
             decoders: vec![],
         };
 
         Ok(App {
-            title: title.to_string(),
             inner,
             view: ViewState {
                 font: FIGfont::standand().unwrap(),
                 active_counter: 0,
-            }
+            },
         })
     }
 
     pub fn on_tick(&mut self) -> Result<(), ()> {
         // on every tick app fetches counters data from registry and sends it into decoders
-        let obj_name = self.inner.object.name_index;
+        let obj_name = self.stats_read().meta.name_index;
         let object_str = obj_name.to_string();
 
         let buffer = query_value(HKEY_PERFORMANCE_DATA, &*object_str, None, None).unwrap();
         let (_rest, data) = perf_data_block(&*buffer).unwrap();
         let object = data.object_types.iter().find(|o| o.ObjectNameTitleIndex == obj_name).unwrap();
         for counter in object.counters.iter() {
-            let meta = self.inner.all_counters.get(counter.CounterNameTitleIndex).unwrap().clone();
-            let value = get_as_dword(object, counter);
-            AppInner::store_raw(Arc::clone(self.stats()), &meta, value);
+            let counter_meta = self.inner.all_counters.get(counter.CounterNameTitleIndex).unwrap().clone();
+            let values = get_as_dword(object, counter);
             // send for further decoding
-            self.inner.decode(&meta, value);
+            self.inner.decode(&counter_meta, values);
         }
 
         Ok(())
@@ -162,7 +224,7 @@ impl App {
     pub fn tab_next(&mut self) {
         // find the first one which is bigger than the current
         let lock = self.stats_read();
-        if let Some(new) = lock.iter().map(|s| s.counter.name_index).find(|it| *it > self.view.active_counter) {
+        if let Some(new) = lock.counters.iter().map(|s| s.meta.name_index).find(|it| *it > self.view.active_counter) {
             drop(lock);
             self.view.active_counter = new;
         }
@@ -171,78 +233,50 @@ impl App {
     pub fn tab_prev(&mut self) {
         // find the first one which is bigger than the current
         let lock = self.stats_read();
-        if let Some(new) = lock.iter().map(|s| s.counter.name_index).rev().find(|it| *it < self.view.active_counter) {
+        if let Some(new) = lock.counters.iter().map(|s| s.meta.name_index).rev().find(|it| *it < self.view.active_counter) {
             drop(lock);
             self.view.active_counter = new;
         }
-    }
-
-    pub fn object(&self) -> CounterMeta {
-        self.inner.object().clone()
     }
 
     pub fn stats(&self) -> &ArcVecStats {
         self.inner.stats()
     }
 
-    pub fn stats_read(&self) -> RwLockReadGuard<VecStats> {
+    pub fn stats_read(&self) -> RwLockReadGuard<ObjectStats> {
         self.stats().read().unwrap()
     }
 
-    pub fn stats_write(&self) -> RwLockWriteGuard<VecStats> {
-        self.stats().write().unwrap()
+    fn fix_active_counter(&mut self) {
+        let found = self.active_counter_index().is_some();
+        let empty = self.stats_read().counters.first().is_none();
+        if !found && !empty {
+            let it = self.stats_read().counters.first().unwrap().meta.name_index;
+            self.view.active_counter = it;
+        }
+    }
+
+    fn active_counter_index(&self) -> Option<usize> {
+        self.stats_read().counters.iter().position(|s| s.meta.name_index == self.view.active_counter)
     }
 }
 
 impl AppInner {
-    pub fn object(&self) -> &CounterMeta {
-        &self.object
-    }
-
     pub fn stats(&self) -> &ArcVecStats {
         &self.stats
     }
 
-    fn stats_mut<T>(stats: ArcVecStats, counter: &CounterMeta, f: impl FnOnce(&mut Stats) -> T) -> T {
-        let mut lock = stats.write().unwrap();
-        let stat = match lock.iter().position(|s| s.counter.name_index == counter.name_index) {
-            Some(i) => &mut lock[i],
-            None => {
-                lock.push(Stats::new(counter.clone()));
-                lock.sort_by(|left, right| left.counter.name_index.cmp(&right.counter.name_index));
-                lock.last_mut().unwrap()
-            }
-        };
-        let result = f(stat);
-        drop(lock);
-        result
-    }
-
-    fn store_raw(stats: ArcVecStats, counter: &CounterMeta, raw: DWORD) {
-        Self::stats_mut(stats, counter, |stat| stat.push_raw(raw));
-    }
-
-    fn store_signal(stats: ArcVecStats, counter: &CounterMeta, signal: bool) {
-        Self::stats_mut(stats, counter, |stat| stat.push_bool(signal));
-    }
-
-    fn store_char(stats: ArcVecStats, counter: &CounterMeta, char: char) {
-        Self::stats_mut(stats, counter, |stat| stat.push_char(char));
-    }
-
-    pub fn decode(&mut self, counter: &CounterMeta, value: DWORD) {
+    pub fn decode(&mut self, counter: &CounterMeta, values: Vec<DataPair>) {
         let decoder = self.decoder_for(counter);
-        decoder.tx.send(value).unwrap();
+        decoder.tx.send(values).unwrap();
     }
 
     fn decoder_for(&mut self, counter: &CounterMeta) -> &mut Decoder {
         match self.decoders.iter().position(|d| d.counter.name_index == counter.name_index) {
-            Some(i) => {
-                &mut self.decoders[i]
-            },
+            Some(i) => &mut self.decoders[i],
             None => {
                 self.spawn_decoder(counter)
-            },
+            }
         }
     }
 
@@ -250,23 +284,43 @@ impl AppInner {
         let (tx, rx) = signal_flow::pair::pair();
         let stats = Arc::clone(self.stats());
         let counter_clone = counter.clone();
+
         let thread_handle = std::thread::spawn(move || {
             let counter = counter_clone;
-            let mut decoder = rx.rtsm(RtsmRanges::new(10..40, 60..90).unwrap())
+            let ranges = RtsmRanges::new(10..50, 60..100).unwrap();
+
+            let mut decoder = rx
+                .map(|mut vec: Vec<DataPair>| {
+                    let mut lock = stats.write().unwrap();
+                    let counter = lock.counter_mut(&counter);
+                    for DataPair(instance_id, value) in vec.iter() {
+                        let instance = counter.instance_mut(instance_id);
+                        instance.push_signal(*value);
+                    }
+                    // make sure instances are ordered
+                    vec.sort_by(|left, right| left.0.cmp(&right.0));
+                    vec.into_iter().map(|pair| pair.1)
+                })
+                .rtsm_multi(|_| ranges.clone())
+                .flatten()
                 .map(|signal| {
-                    AppInner::store_signal(Arc::clone(&stats), &counter, signal);
+                    let mut lock = stats.write().unwrap();
+                    let counter = lock.counter_mut(&counter);
+                    counter.push_signal(signal);
                     signal
                 })
                 .morse_decode::<ITU>()
                 .map(|char| {
-                    AppInner::store_char(Arc::clone(&stats), &counter, char);
+                    let mut lock = stats.write().unwrap();
+                    let counter = lock.counter_mut(&counter);
+                    counter.push_char(char);
                     char
                 });
             loop {
                 match decoder.recv() {
                     Ok(None) => break,
-                    Ok(Some(_)) => {},
-                    Err(_) => {/*try recover*/},
+                    Ok(Some(_)) => {}
+                    Err(_) => { /*try recover*/ }
                 }
             }
         });
@@ -297,7 +351,7 @@ enum Event {
 
 pub fn main() -> Result<(), Box<dyn Error>> {
     let cli: Cli = argh::from_env();
-    let mut app = App::new("Morse counters", cli.object)?;
+    let mut app = App::new(cli.object)?;
 
     enable_raw_mode()?;
     let mut stdout = stdout();
@@ -315,9 +369,9 @@ pub fn main() -> Result<(), Box<dyn Error>> {
     thread::spawn(move || -> Result<(), ()> {
         loop {
             // poll for tick rate duration, if no events, sent tick event.
-            if event::poll(Duration::from_millis(tick as _)).map_err(drop)? {
+            if event::poll(tick).map_err(drop)? {
                 if let CEvent::Key(key) = event::read().map_err(drop)? {
-                        tx.send(Event::Input(key)).map_err(drop)?
+                    tx.send(Event::Input(key)).map_err(drop)?
                 }
             }
             tx.send(Event::Tick).map_err(drop)?;
@@ -325,11 +379,13 @@ pub fn main() -> Result<(), Box<dyn Error>> {
     });
     terminal.clear()?;
     loop {
+        app.fix_active_counter();
+
         terminal.draw(|mut f| {
             ui::draw(&mut f, &mut app).unwrap();
         })?;
-        let value = rx.recv()?;
-        match value {
+
+        match rx.recv()? {
             Event::Input(event) => match event.code {
                 KeyCode::Char('q') => {
                     disable_raw_mode()?;
@@ -350,15 +406,25 @@ pub fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn get_as_dword(object: &PerfObjectType, counter: &PerfCounterDefinition) -> DWORD {
+#[derive(Debug)]
+pub struct DataPair(InstanceId, DWORD);
+
+fn get_as_dword(object: &PerfObjectType, counter: &PerfCounterDefinition) -> Vec<DataPair> {
     match &object.data {
         PerfObjectData::Singleton(block) => {
-            match CounterValue::try_get(counter, block).unwrap() {
-                CounterValue::Large(large) => large as u32,
-                CounterValue::Dword(dword) => dword as u32,
-                _ => unimplemented!(),
-            }
+            vec![get_as_dword_inner(InstanceId::perf_no_instances(), counter, block)]
         }
-        _ => unimplemented!()
+        PerfObjectData::Instances(vec) => {
+            vec.iter()
+                .map(|(instance, block)| get_as_dword_inner(instance.into(), counter, block))
+                .collect()
+        }
+    }
+}
+
+fn get_as_dword_inner(instance: InstanceId, counter: &PerfCounterDefinition, block: &PerfCounterBlock) -> DataPair {
+    match CounterVal::try_get(counter, block).unwrap() {
+        CounterVal::Dword(dword) => DataPair(instance, dword as DWORD),
+        _ => unimplemented!(),
     }
 }

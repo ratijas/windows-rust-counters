@@ -295,8 +295,8 @@ mod test {
                 let processes_counter = obj.counters.iter()
                     .find(|c| c.raw.CounterNameTitleIndex == 248)
                     .expect("Processes counter");
-                let res = CounterValue::try_get(processes_counter, block);
-                assert_eq!(res, Ok(CounterValue::Dword(201)));
+                let res = CounterVal::try_get(processes_counter, block);
+                assert_eq!(res, Ok(CounterVal::Dword(201)));
             }
             _ => panic!("should be an object without instances"),
         }

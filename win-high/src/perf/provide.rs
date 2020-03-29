@@ -10,7 +10,7 @@ use win_low::winperf::*;
 
 use crate::perf::nom::*;
 use crate::perf::types::*;
-use crate::perf::values::CounterValue;
+use crate::perf::values::CounterVal;
 use crate::prelude::v1::*;
 
 use winapi::um::winnt::KEY_READ;
@@ -53,7 +53,7 @@ pub trait PerfProvider {
             per_counter: &PerfCounterDefinitionTemplate,
             per_instance: Option<&PerfInstanceDefinitionTemplate>,
             now: PerfClock,
-    ) -> CounterValue;
+    ) -> CounterVal;
 
     fn should_respond(&self, to_query: &QueryType, with_object: &PerfObjectTypeTemplate) -> WinResult<bool> {
         let answer = match to_query {
@@ -67,6 +67,12 @@ pub trait PerfProvider {
         };
         Ok(answer)
     }
+
+    /// Callback before `collect()`.
+    fn prepare(&mut self) {}
+
+    /// Callback after `collect()`.
+    fn finish(&mut self) {}
 
     fn collect_object<'a>(
         &self,
@@ -159,7 +165,9 @@ pub trait PerfProvider {
         buffer.get_mut(len..).ok_or(())
     }
 
-    fn collect(&self, query: QueryType, mut buffer: &mut [u8]) -> WinResult<Collected> {
+    fn collect(&mut self, query: QueryType, mut buffer: &mut [u8]) -> WinResult<Collected> {
+        self.prepare();
+
         let mut total_bytes: usize = 0;
         let mut num_object_types = 0;
         for object in self.objects() {
@@ -171,6 +179,9 @@ pub trait PerfProvider {
                 num_object_types += 1;
             }
         }
+
+        self.finish();
+
         Ok(Collected {
             total_bytes,
             num_object_types,
@@ -234,7 +245,7 @@ impl<X: PerfProvider> PerfProvider for CachingPerfProvider<X> {
         self.inner.instances(for_object)
     }
 
-    fn data(&self, for_object: &PerfObjectTypeTemplate, per_counter: &PerfCounterDefinitionTemplate, per_instance: Option<&PerfInstanceDefinitionTemplate>, now: PerfClock) -> CounterValue {
+    fn data(&self, for_object: &PerfObjectTypeTemplate, per_counter: &PerfCounterDefinitionTemplate, per_instance: Option<&PerfInstanceDefinitionTemplate>, now: PerfClock) -> CounterVal {
         self.inner.data(for_object, per_counter, per_instance, now)
     }
 
@@ -447,7 +458,7 @@ impl<'a> PerfInstanceDefinitionTemplate<'a> {
         PerfInstanceDefinitionTemplate {
             ParentObjectTitleIndex: 0,
             ParentObjectInstance: 0,
-            UniqueID: -1,
+            UniqueID: PERF_NO_UNIQUE_ID,
             Name,
         }
     }
@@ -540,7 +551,7 @@ impl<'a> CountersBlockBuffer<'a> {
         self.buffer.len()
     }
 
-    pub fn write<'b>(&mut self, def: &PERF_COUNTER_DEFINITION, value: CounterValue<'b>) -> Result<(), ()> {
+    pub fn write<'b>(&mut self, def: &PERF_COUNTER_DEFINITION, value: CounterVal<'b>) -> Result<(), ()> {
         let offset = def.CounterOffset as usize;
         let length = def.CounterSize as usize;
         let slice = self.buffer.get_mut(offset..offset + length).ok_or(())?;
@@ -678,10 +689,10 @@ mod test {
             None
         }
 
-        fn data(&self, for_object: &PerfObjectTypeTemplate, per_counter: &PerfCounterDefinitionTemplate, per_instance: Option<&PerfInstanceDefinitionTemplate>, now: PerfClock) -> CounterValue {
+        fn data(&self, for_object: &PerfObjectTypeTemplate, per_counter: &PerfCounterDefinitionTemplate, per_instance: Option<&PerfInstanceDefinitionTemplate>, now: PerfClock) -> CounterVal {
             match per_counter.counter_type.size() {
-                Size::Dword => CounterValue::Dword(42),
-                Size::Large => CounterValue::Large(37),
+                Size::Dword => CounterVal::Dword(42),
+                Size::Large => CounterVal::Large(37),
                 _ => unimplemented!()
             }
         }
@@ -701,7 +712,7 @@ mod test {
 
     #[test]
     fn test_no_instances() {
-        let provider = BasicPerfProvider::new(
+        let mut provider = BasicPerfProvider::new(
             vec![PerfObjectTypeTemplate::new(0)],
             vec![PerfCounterDefinitionTemplate::new(2, unsafe { CounterTypeDefinition::from_raw_unchecked(PERF_COUNTER_RAWCOUNT) })],
         );
@@ -761,17 +772,17 @@ mod test {
                 per_counter: &PerfCounterDefinitionTemplate,
                 per_instance: Option<&PerfInstanceDefinitionTemplate>,
                 now: PerfClock,
-        ) -> CounterValue {
+        ) -> CounterVal {
             match per_instance {
-                Some(instance) => CounterValue::Dword((2 * instance.UniqueID) as _),
-                None => CounterValue::Dword(42),
+                Some(instance) => CounterVal::Dword((2 * instance.UniqueID) as _),
+                None => CounterVal::Dword(42),
             }
         }
     }
 
     #[test]
     fn test_instances() {
-        let provider = InstancesPerfProvider {
+        let mut provider = InstancesPerfProvider {
             timer: ZeroTimeProvider,
             objects: vec![PerfObjectTypeTemplate::new(0)],
             counters: vec![PerfCounterDefinitionTemplate::new(2, unsafe { CounterTypeDefinition::from_raw_unchecked(PERF_COUNTER_RAWCOUNT) })],
@@ -797,11 +808,11 @@ mod test {
             match instance.UniqueID {
                 0 => {
                     assert_eq!(instance.name.to_string_lossy(), "first");
-                    assert_eq!(CounterValue::try_get(counter, block).unwrap(), CounterValue::Dword(0));
+                    assert_eq!(CounterVal::try_get(counter, block).unwrap(), CounterVal::Dword(0));
                 }
                 1 => {
                     assert_eq!(instance.name.to_string_lossy(), "second");
-                    assert_eq!(CounterValue::try_get(counter, block).unwrap(), CounterValue::Dword(2));
+                    assert_eq!(CounterVal::try_get(counter, block).unwrap(), CounterVal::Dword(2));
                 }
                 _ => unreachable!(),
             }

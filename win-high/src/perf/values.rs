@@ -4,8 +4,36 @@ use crate::perf::nom::*;
 use crate::perf::types::*;
 use crate::prelude::v1::*;
 
+/// Owned wrapper for counter value.
 #[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
-pub enum CounterValue<'a> {
+pub enum CounterValue {
+    Dword(DWORD),
+    Large(ULONGLONG),
+    TextUnicode(U16CString),
+    TextAscii(String),
+    Zero,
+}
+
+impl CounterValue {
+    pub fn borrow(&self) -> CounterVal {
+        match *self {
+            Self::Dword(value) => CounterVal::Dword(value),
+            Self::Large(value) => CounterVal::Large(value),
+            Self::TextUnicode(ref string) => CounterVal::TextUnicode(string.as_ref()),
+            Self::TextAscii(ref string) => CounterVal::TextAscii(string.as_ref()),
+            Self::Zero => CounterVal::Zero,
+        }
+    }
+}
+
+/// Borrowed wrapper for counter value.
+///
+/// It is to the `CounterValue` as a `str` is to the String.
+/// Well, not actually, because we can't just return `&CounterVal`
+/// from the `CounterValue::borrow()` method. Instead, an **owned**
+/// `CounterVal` with a **borrowed** data is returned.
+#[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
+pub enum CounterVal<'a> {
     Dword(DWORD),
     Large(ULONGLONG),
     TextUnicode(&'a U16CStr),
@@ -21,7 +49,17 @@ pub enum ValueError {
     UnknownType,
 }
 
-impl<'b> CounterValue<'b> {
+impl<'b> CounterVal<'b> {
+    pub fn to_owned(&self) -> CounterValue {
+        match *self {
+            Self::Dword(value) => CounterValue::Dword(value),
+            Self::Large(value) => CounterValue::Large(value),
+            Self::TextUnicode(str) => CounterValue::TextUnicode(str.to_owned()),
+            Self::TextAscii(str) => CounterValue::TextAscii(str.to_owned()),
+            Self::Zero => CounterValue::Zero,
+        }
+    }
+
     pub fn try_get<'a>(def: &'a PerfCounterDefinition, block: &'b PerfCounterBlock) -> Result<Self, ValueError> {
         get_value(def, block)
     }
@@ -36,19 +74,19 @@ impl<'b> CounterValue<'b> {
         }
         unsafe {
             match *self {
-                CounterValue::Dword(dword) => {
+                CounterVal::Dword(dword) => {
                     let slice: &[DWORD] = &[dword];
                     let source = downcast(slice);
                     checked_write(source, buffer)?;
                 }
-                CounterValue::Large(large) => {
+                CounterVal::Large(large) => {
                     let slice: &[ULONGLONG] = &[large];
                     let source = downcast(slice);
                     checked_write(source, buffer)?;
                 }
-                CounterValue::TextUnicode(_) => panic!("not supported"),
-                CounterValue::TextAscii(_) => panic!("not supported"),
-                CounterValue::Zero => checked_write(&[], buffer)?,
+                CounterVal::TextUnicode(_) => panic!("not supported"),
+                CounterVal::TextAscii(_) => panic!("not supported"),
+                CounterVal::Zero => checked_write(&[], buffer)?,
             }
         }
         Ok(())
@@ -61,7 +99,7 @@ pub fn get_slice<'a, 'b>(def: &'a PerfCounterDefinition, block: &'b PerfCounterB
     block.data().get(offset..offset + len)
 }
 
-fn get_value<'a, 'b>(def: &'a PerfCounterDefinition, block: &'b PerfCounterBlock) -> Result<CounterValue<'b>, ValueError> {
+fn get_value<'a, 'b>(def: &'a PerfCounterDefinition, block: &'b PerfCounterBlock) -> Result<CounterVal<'b>, ValueError> {
     let typ = CounterTypeDefinition::try_from(def).expect("counter");
     let mut slice = get_slice(def, block).ok_or(ValueError::BadSize)?;
     let value = unsafe {
@@ -69,21 +107,21 @@ fn get_value<'a, 'b>(def: &'a PerfCounterDefinition, block: &'b PerfCounterBlock
             Size::Dword => {
                 let number = upcast::<DWORD>(slice).map_err(|_| ValueError::BadSize)?
                     .get(0).ok_or(ValueError::NoData)?.clone();
-                CounterValue::Dword(number)
+                CounterVal::Dword(number)
             }
             Size::Large => {
                 let number = upcast::<ULONGLONG>(slice).map_err(|_| ValueError::BadSize)?
                     .get(0).ok_or(ValueError::NoData)?.clone();
-                CounterValue::Large(number)
+                CounterVal::Large(number)
             }
-            Size::Zero => CounterValue::Zero,
+            Size::Zero => CounterVal::Zero,
             Size::Var => {
                 if let CounterType::Text(encoding) = typ.counter_type() {
                     match encoding {
                         Text::Unicode => {
                             let u16slice = upcast::<u16>(slice).map_err(|_| ValueError::BadSize)?;
                             let text = U16CStr::from_slice_with_nul(u16slice).map_err(|_| ValueError::StringFormat)?;
-                            CounterValue::TextUnicode(text)
+                            CounterVal::TextUnicode(text)
                         }
                         Text::Ascii => {
                             // is there slice.trim method?
@@ -91,7 +129,7 @@ fn get_value<'a, 'b>(def: &'a PerfCounterDefinition, block: &'b PerfCounterBlock
                                 slice = &slice[..slice.len() - 1];
                             }
                             let text = std::str::from_utf8(slice).map_err(|_| ValueError::StringFormat)?;
-                            CounterValue::TextAscii(text)
+                            CounterVal::TextAscii(text)
                         }
                     }
                 } else {

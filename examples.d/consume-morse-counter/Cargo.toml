@@ -8,6 +8,8 @@ edition = "2018"
 argh = "0.1.3"
 hexyl = "*"
 figlet-rs = "0.1.3"
+# temporary workaround.  at the time of writing, 1.0.3 just came out and broke the build.
+quote = "=1.0.1"
 
 morse-stream = { path = "../../morse-stream" }
 signal-flow = { path = "../../signal-flow" }
@@ -15,8 +17,11 @@ signal-flow = { path = "../../signal-flow" }
 [target.'cfg(windows)'.dependencies]
 win-high = { path = "../../win-high" }
 win-low = { path = "../../win-low" }
-# temporary workaround.  at the time of writing, 1.0.3 just came out and broke the build.
-quote = "=1.0.1"
+[target.'cfg(windows)'.dependencies.winapi]
+version = "0.3"
+features = [
+    "winnt",
+]
 
 [dependencies.crossterm]
 version = "0.14"

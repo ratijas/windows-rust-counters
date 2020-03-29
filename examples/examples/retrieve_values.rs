@@ -75,7 +75,7 @@ fn main() {
         // println!("ObjectType PerfTime: {:?}; FreqTime: {:?}", obj_system.PerfTime, obj_system.PerfFreq);
         if let PerfObjectData::Singleton(block) = &obj_system.data {
             xxd(block.data()).expect("xxd");
-            let value = CounterValue::try_get(counter_uptime, block).expect("get value");
+            let value = CounterVal::try_get(counter_uptime, block).expect("get value");
             println!("Value: {:?}", value);
 
             // {
