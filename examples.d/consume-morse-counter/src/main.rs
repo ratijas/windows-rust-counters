@@ -1,7 +1,7 @@
 use std::{
     collections::VecDeque,
     error::Error,
-    io::{stdout, Write},
+    io::{stdout, Stdout, Write},
     sync::{Arc, mpsc},
     thread,
     time::Duration,
@@ -203,7 +203,7 @@ impl App {
         })
     }
 
-    pub fn on_tick(&mut self) -> Result<(), ()> {
+    pub fn on_tick(&mut self) -> Result<(), Box<dyn Error>> {
         // on every tick app fetches counters data from registry and sends it into decoders
         let obj_name = self.stats_read().meta.name_index;
         let object_str = obj_name.to_string();
@@ -215,7 +215,7 @@ impl App {
             let counter_meta = self.inner.all_counters.get(counter.CounterNameTitleIndex).unwrap().clone();
             let values = get_as_dword(object, counter);
             // send for further decoding
-            self.inner.decode(&counter_meta, values);
+            self.inner.decode(&counter_meta, values)?;
         }
 
         Ok(())
@@ -266,9 +266,9 @@ impl AppInner {
         &self.stats
     }
 
-    pub fn decode(&mut self, counter: &CounterMeta, values: Vec<DataPair>) {
+    pub fn decode(&mut self, counter: &CounterMeta, values: Vec<DataPair>) -> Result<(), Box<dyn Error>> {
         let decoder = self.decoder_for(counter);
-        decoder.tx.send(values).unwrap();
+        decoder.tx.send(values)
     }
 
     fn decoder_for(&mut self, counter: &CounterMeta) -> &mut Decoder {
@@ -339,7 +339,9 @@ impl Drop for AppInner {
         for d in self.decoders.drain(..) {
             let Decoder { tx, thread_handle, .. } = d;
             drop(tx);
-            thread_handle.join().unwrap();
+            if let Err(e) = thread_handle.join() {
+                println!("Thread panic: {:?}", e);
+            }
         }
     }
 }
@@ -388,10 +390,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
         match rx.recv()? {
             Event::Input(event) => match event.code {
                 KeyCode::Char('q') => {
-                    disable_raw_mode()?;
-                    #[allow(deprecated)]
-                    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
-                    terminal.show_cursor()?;
+                    clean_on_exit(&mut terminal)?;
                     break;
                 }
                 KeyCode::Right => app.tab_next(),
@@ -399,10 +398,22 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 _ => {}
             },
             Event::Tick => {
-                app.on_tick().expect("tick error");
+                if let Err(e) = app.on_tick() {
+                    clean_on_exit(&mut terminal)?;
+                    println!("Error: {:?}", e);
+                    break;
+                }
             }
         }
     }
+    Ok(())
+}
+
+fn clean_on_exit(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<(), Box<dyn Error>> {
+    disable_raw_mode()?;
+    #[allow(deprecated)]
+    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+    terminal.show_cursor()?;
     Ok(())
 }
 
