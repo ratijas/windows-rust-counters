@@ -58,8 +58,9 @@ impl<X, R: IntervalRole> Interval<X, R> {
 
         let elapsed = match now.duration_since(last) {
             Ok(elapsed) => elapsed,
-            Err(e) => {
-                println!("Interval{}: system time drift error: {:?}", R::role_name(), e);
+            Err(_e) => {
+                // TODO: log
+                // println!("Interval{}: system time drift error: {:?}", R::role_name(), e);
                 return None;
             }
         };
@@ -67,7 +68,8 @@ impl<X, R: IntervalRole> Interval<X, R> {
         let until_next_call = match self.rate.checked_sub(elapsed) {
             Some(until_next_call) => until_next_call,
             None => {
-                println!("Interval{}: slow receiver, late by {:?}", R::role_name(), (elapsed - self.rate));
+                // TODO: log
+                // println!("Interval{}: slow receiver, late by {:?}", R::role_name(), (elapsed - self.rate));
                 return None;
             }
         };
