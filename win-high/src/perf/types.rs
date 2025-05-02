@@ -136,6 +136,7 @@ pub enum Timer {
 // Any types that have calculations performed can use one or more of
 // the following calculation modification flags listed here
 bitflags! {
+    #[derive(Copy, Clone, Debug)]
     pub struct CalculationModifiers: u32 {
         /// compute difference first
         const DELTA = PERF_DELTA_COUNTER;
@@ -460,7 +461,7 @@ mod imp {
         }
 
         pub fn into_raw(self) -> DWORD {
-            self.bits
+            self.bits()
         }
     }
 

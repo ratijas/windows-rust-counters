@@ -1,5 +1,5 @@
 //! Bindings to the `#include <WinPerf.h>`
-#![allow(bad_style, overflowing_literals, unused_macros)]
+#![allow(bad_style, overflowing_literals, unused_macros, unexpected_cfgs)]
 
 use winapi::shared::minwindef::*;
 use winapi::shared::ntdef::*;

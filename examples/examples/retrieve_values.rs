@@ -2,11 +2,9 @@ use std::io::{self, Cursor};
 use std::mem::align_of;
 
 use hexyl::*;
-use winapi::um::sysinfoapi::GetTickCount;
 
 use win_high::perf::{
     consume::*,
-    display::*,
     nom::*,
     types::*,
     values::*,
@@ -37,7 +35,7 @@ fn main() {
 
         // println!("Whole result:");
         // println!("{:?}", perf_data);
-        xxd(buf.as_slice()).expect("Print hex value");
+        xxd(buf.as_slice());
         print_perf_data(&perf_data, &meta);
     }
 
@@ -63,7 +61,7 @@ fn main() {
 
         unsafe {
             let slice = std::slice::from_raw_parts(obj_system.raw as *const PERF_OBJECT_TYPE as *const u8, obj_system.TotalByteLength as usize);
-            xxd( slice).expect("xxd");
+            xxd( slice);
         }
 
         let counter_uptime = obj_system.counters.iter()
@@ -74,10 +72,12 @@ fn main() {
         //          perf_data.PerfTime, perf_data.PerfFreq, perf_data.PerfTime100nSec);
         // println!("ObjectType PerfTime: {:?}; FreqTime: {:?}", obj_system.PerfTime, obj_system.PerfFreq);
         if let PerfObjectData::Singleton(block) = &obj_system.data {
-            xxd(block.data()).expect("xxd");
+            xxd(block.data());
             let value = CounterVal::try_get(counter_uptime, block).expect("get value");
             println!("Value: {:?}", value);
 
+            // use winapi::um::sysinfoapi::GetTickCount;
+            // use win_high::perf::display::*;
             // {
             //     let raw = get_slice(counter_uptime, block).expect("get slice");
             //     let mut bytes = [0u8; 4];
@@ -112,7 +112,7 @@ fn print_perf_data(data: &PerfDataBlock, meta: &AllCounters) {
 
 fn print_counters_data(left_pad: &str, counters: &[PerfCounterDefinition], block: &PerfCounterBlock, meta: &AllCounters) {
     println!("{}Data block:", left_pad);
-    xxd(block.data()).expect("xxd");
+    xxd(block.data());
     println!("{}Counters:", left_pad);
     for c in counters {
         let raw = get_slice(c, block).expect("get slice");
@@ -129,7 +129,7 @@ fn print_counters_data(left_pad: &str, counters: &[PerfCounterDefinition], block
                  c.CounterType,
         );
         println!("{}    Type: {:?}", left_pad, typ);
-        xxd(raw).expect("xxd");
+        xxd(raw);
     }
 }
 
@@ -149,15 +149,17 @@ fn do_get_values() -> WinResult<Vec<u8>> {
     Ok(value)
 }
 
-fn xxd(buffer: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
+fn xxd(buffer: &[u8]) {
     let mut reader = Cursor::new(buffer);
     let stdout = io::stdout();
     let mut stdout_lock = stdout.lock();
-    let show_color = true;
-    let border_style = BorderStyle::Unicode;
-    let squeeze = false;
 
-    let mut printer = Printer::new(&mut stdout_lock, show_color, border_style, squeeze);
+    let mut printer = PrinterBuilder::new(&mut stdout_lock)
+        .show_color(true)
+        .with_border_style(BorderStyle::Unicode)
+        .enable_squeezing(false)
+        .build();
+
     printer.display_offset(0);
-    printer.print_all(&mut reader)
+    printer.print_all(&mut reader).expect("xxd");
 }

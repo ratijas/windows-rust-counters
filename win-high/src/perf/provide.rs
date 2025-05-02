@@ -665,11 +665,11 @@ mod test {
     }
 
     impl PerfProvider for BasicPerfProvider {
-        fn service_name(&self, for_object: &PerfObjectTypeTemplate) -> &str {
+        fn service_name(&self, _for_object: &PerfObjectTypeTemplate) -> &str {
             unimplemented!()
         }
 
-        fn first_counter(&self, for_object: &PerfObjectTypeTemplate) -> WinResult<u32> {
+        fn first_counter(&self, _for_object: &PerfObjectTypeTemplate) -> WinResult<u32> {
             Ok(0)
         }
 
@@ -677,19 +677,19 @@ mod test {
             self.objects.as_ref()
         }
 
-        fn time_provider(&self, for_object: &PerfObjectTypeTemplate) -> &dyn PerfTimeProvider {
+        fn time_provider(&self, _for_object: &PerfObjectTypeTemplate) -> &dyn PerfTimeProvider {
             &self.timer
         }
 
-        fn counters(&self, for_object: &PerfObjectTypeTemplate) -> &[PerfCounterDefinitionTemplate] {
+        fn counters(&self, _for_object: &PerfObjectTypeTemplate) -> &[PerfCounterDefinitionTemplate] {
             self.counters.as_ref()
         }
 
-        fn instances(&self, for_object: &PerfObjectTypeTemplate) -> Option<Vec<PerfInstanceDefinitionTemplate>> {
+        fn instances(&self, _for_object: &PerfObjectTypeTemplate) -> Option<Vec<PerfInstanceDefinitionTemplate>> {
             None
         }
 
-        fn data(&self, for_object: &PerfObjectTypeTemplate, per_counter: &PerfCounterDefinitionTemplate, per_instance: Option<&PerfInstanceDefinitionTemplate>, now: PerfClock) -> CounterVal {
+        fn data(&self, _for_object: &PerfObjectTypeTemplate, per_counter: &PerfCounterDefinitionTemplate, _per_instance: Option<&PerfInstanceDefinitionTemplate>, _now: PerfClock) -> CounterVal {
             match per_counter.counter_type.size() {
                 Size::Dword => CounterVal::Dword(42),
                 Size::Large => CounterVal::Large(37),

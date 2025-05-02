@@ -1,7 +1,7 @@
 use std::{
     collections::VecDeque,
     error::Error,
-    io::{stdout, Stdout, Write},
+    io::{stdout, Stdout},
     sync::{Arc, mpsc},
     thread,
     time::Duration,
@@ -16,7 +16,7 @@ use crossterm::{
 };
 use crossterm::event::KeyEvent;
 use figlet_rs::FIGfont;
-use tui::{
+use ratatui::{
     backend::CrosstermBackend,
     Terminal,
 };
@@ -197,7 +197,7 @@ impl App {
         Ok(App {
             inner,
             view: ViewState {
-                font: FIGfont::standand().unwrap(),
+                font: FIGfont::standard().unwrap(),
                 active_counter: 0,
             },
         })
@@ -373,7 +373,9 @@ pub fn main() -> Result<(), Box<dyn Error>> {
             // poll for tick rate duration, if no events, sent tick event.
             if event::poll(tick).map_err(drop)? {
                 if let CEvent::Key(key) = event::read().map_err(drop)? {
-                    tx.send(Event::Input(key)).map_err(drop)?
+                    if key.is_press() {
+                        tx.send(Event::Input(key)).map_err(drop)?
+                    }
                 }
             }
             tx.send(Event::Tick).map_err(drop)?;

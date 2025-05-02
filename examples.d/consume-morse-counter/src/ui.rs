@@ -1,18 +1,15 @@
-use std::borrow::Cow;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::io;
 
-use tui::{
-    backend::Backend,
+use ratatui::{
     Frame,
-    widgets::{
-        Block, Borders, Chart, Paragraph, Tabs, Text, Widget,
-    },
+    layout::{Alignment, Constraint, Direction, Layout, Rect},
+    style::{Color, Modifier, Style, Stylize},
+    symbols::Marker,
+    text::Line,
+    widgets::{Axis, Block, Borders, Chart, Dataset, Paragraph, Tabs, Wrap},
 };
-use tui::layout::{Alignment, Constraint, Direction, Layout, Rect};
-use tui::style::{Color, Modifier, Style};
-use tui::widgets::{Axis, Dataset, Marker};
 
 use crate::{App, CounterStats};
 
@@ -25,17 +22,14 @@ const COLOR_ON_PRIMARY: Color = Color::White;
 const COLOR_ON_SECONDARY: Color = Color::White;
 const COLOR_ON_BACKGROUND: Color = Color::Reset;
 
-pub fn draw<B>(f: &mut Frame<B>, app: &mut App) -> io::Result<()>
-    where
-        B: Backend,
-{
-    let area = f.size();
+pub fn draw(f: &mut Frame, app: &mut App) -> io::Result<()> {
+    let area = f.area();
     // let _lock = app.stats_read();
     print!("");
 
-    Block::default()
-        .style(Style::default())
-        .render(f, area);
+    let block = Block::default()
+        .style(Style::default());
+    f.render_widget(block, area);
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -54,45 +48,38 @@ pub fn draw<B>(f: &mut Frame<B>, app: &mut App) -> io::Result<()>
     Ok(())
 }
 
-fn draw_header<B>(f: &mut Frame<B>, app: &App, area: Rect) -> io::Result<()>
-    where B: Backend
-{
+fn draw_header(f: &mut Frame, app: &App, area: Rect) -> io::Result<()> {
     let object = app.stats_read().meta.clone();
-    let text = [
-        Text::raw(&object.help_value),
-    ];
-    Paragraph::new(text.iter())
+    let block = Paragraph::new(&*object.help_value)
         .alignment(Alignment::Center)
         .block(Block::default()
             .borders(Borders::ALL)
-            .title(&object.name_value)
+            .title(&*object.name_value)
             .title_style(Style::default().fg(COLOR_PRIMARY))
             .style(Style::default().fg(COLOR_ON_BACKGROUND))
         )
-        .wrap(true)
-        .render(f, area);
+        .wrap(Wrap { trim: true });
+    f.render_widget(block, area);
     Ok(())
 }
 
 /// Returns sub-chunk of the rest area.
-fn draw_tabs<B>(f: &mut Frame<B>, app: &App, area: Rect) -> io::Result<Rect>
-    where B: Backend
-{
-    let tabs = app.stats_read().counters.iter().map(|s| s.meta.name_value.clone()).collect::<Vec<_>>();
+fn draw_tabs(f: &mut Frame, app: &App, area: Rect) -> io::Result<Rect> {
+    let tabs = app.stats_read().counters.iter().map(|s| Line::raw(s.meta.name_value.clone())).collect::<Vec<_>>();
     let selected_index = app.active_counter_index().unwrap_or(usize::MAX);
 
-    Tabs::default()
+    let widget = Tabs::default()
         .block(
             Block::default()
                 .borders(Borders::ALL)
                 .title("Counters")
                 .title_style(Style::default().fg(COLOR_PRIMARY))
         )
-        .titles(&tabs)
+        .titles(tabs)
         .select(selected_index)
         .style(Style::default().fg(COLOR_ON_BACKGROUND))
-        .highlight_style(Style::default().fg(COLOR_ON_SECONDARY).bg(COLOR_SECONDARY).modifier(Modifier::BOLD))
-        .render(f, area);
+        .highlight_style(Style::default().fg(COLOR_ON_SECONDARY).bg(COLOR_SECONDARY).add_modifier(Modifier::BOLD));
+    f.render_widget(widget, area);
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -100,62 +87,52 @@ fn draw_tabs<B>(f: &mut Frame<B>, app: &App, area: Rect) -> io::Result<Rect>
             Constraint::Length(2),
             Constraint::Min(0)
         ].as_ref())
+        .vertical_margin(1)
+        .horizontal_margin(2)
         .split(area);
 
     Ok(chunks[1])
 }
 
-fn draw_stat<B>(f: &mut Frame<B>, app: &App, stat: CounterStats, area: Rect) -> io::Result<()>
-    where B: Backend
-{
+fn draw_stat(f: &mut Frame, app: &App, stat: CounterStats, area: Rect) -> io::Result<()> {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .vertical_margin(1)
-        .horizontal_margin(2)
         .constraints([
             Constraint::Length(2), // help text
             Constraint::Length(2), // decoded bit stream
             Constraint::Length(6), // decoded text
-            Constraint::Ratio(1, 3), // raw counter value
+            Constraint::Fill(1), // raw counter value
         ].as_ref())
         .split(area);
 
-    Paragraph::new([
-        Text::raw(&stat.meta.help_value),
-        Text::raw("\n\n"),
-    ].iter())
+    let widget = Paragraph::new(&*stat.meta.help_value)
         .alignment(Alignment::Center)
-        .wrap(true)
-        .style(Style::default().fg(COLOR_ON_BACKGROUND))
-        .render(f, chunks[0]);
+        .wrap(Wrap { trim: true })
+        .style(Style::default().fg(COLOR_ON_BACKGROUND));
+    f.render_widget(widget, chunks[0]);
 
     let text = pretty_signal(&*stat.signal.iter().cloned().collect::<Vec<_>>());
     let text = trim_lines_to_width(&text, Alignment::Right, chunks[1]);
-    Paragraph::new([
-        Text::raw(Cow::from(text)),
-    ].iter())
-        .wrap(false)
+    let widget = Paragraph::new(text)
+        .wrap(Wrap { trim: true })
         .alignment(Alignment::Right)
         .block(Block::default()
             .title("Decoded signal")
             .title_style(Style::default().fg(COLOR_PRIMARY))
             .borders(Borders::TOP))
-        .style(Style::default().fg(COLOR_SECONDARY_VARIANT))
-        .render(f, chunks[1]);
+        .style(Style::default().fg(COLOR_SECONDARY_VARIANT));
+    f.render_widget(widget, chunks[1]);
 
     let message = &stat.decoded;
     let message = message.replace(" ", "   "); // make spaces noticeable with this font
     if let Some(figure) = app.view.font.convert(&message) {
         let string = figure.to_string();
         let string = trim_lines_to_width(&*string, Alignment::Right, chunks[2]);
-        let text = [
-            Text::raw(Cow::from(string))
-        ];
-        Paragraph::new(text.iter())
-            .wrap(false)
+        let widget = Paragraph::new(string)
+            .wrap(Wrap { trim: true })
             .alignment(Alignment::Right)
-            .style(Style::default().fg(COLOR_ON_BACKGROUND).modifier(Modifier::BOLD))
-            .render(f, chunks[2]);
+            .style(Style::default().fg(COLOR_ON_BACKGROUND).add_modifier(Modifier::BOLD));
+        f.render_widget(widget, chunks[2]);
     }
 
     let dataset_owned: Vec<_> = stat.instances.iter().map(|instance| {
@@ -173,12 +150,12 @@ fn draw_stat<B>(f: &mut Frame<B>, app: &App, stat: CounterStats, area: Rect) -> 
     }).collect();
     let dataset_ref: Vec<_> = dataset_owned.iter().map(|(name, data, color)| {
         Dataset::default()
-            .name(name)
-            .marker(if stat.instances.len() <=4 { Marker::Dot } else { Marker::Braille })
+            .name(Line::raw(name))
+            .marker(if stat.instances.len() <= 4 { Marker::Dot } else { Marker::Braille })
             .style(Style::default().fg(*color))
             .data(&data)
     }).collect();
-    Chart::default()
+    let widget = Chart::new(dataset_ref)
         .block(
             Block::default()
                 .title("Raw counter value (as can be observed via perfmon.exe)")
@@ -189,20 +166,18 @@ fn draw_stat<B>(f: &mut Frame<B>, app: &App, stat: CounterStats, area: Rect) -> 
             Axis::default()
                 .title("Time")
                 .style(Style::default().fg(COLOR_ON_BACKGROUND))
-                .labels_style(Style::default().modifier(Modifier::ITALIC))
                 .bounds([0f64, 100f64]) // last 100 values
-                .labels(&["Last"]),
+                .labels(["Old".italic(), "New".italic()])
         )
         .y_axis(
             Axis::default()
                 .title("Counter value")
                 .style(Style::default().fg(COLOR_ON_BACKGROUND))
-                .labels_style(Style::default().modifier(Modifier::ITALIC))
                 .bounds([0.0, 100.0])
-                .labels(&["0", "20", "40", "60", "80", "100"]),
-        )
-        .datasets(&dataset_ref)
-        .render(f, chunks[3]);
+                .labels(["0".italic(), "20".italic(), "40".italic(), "60".italic(), "80".italic(), "100".italic()]),
+        );
+    f.render_widget(widget, chunks[3]);
+
     Ok(())
 }
 
@@ -217,14 +192,12 @@ fn color_for<T: Hash>(t: &T) -> Color {
     colors[(1 + calculate_hash(t)) as usize % colors.len()]
 }
 
-fn draw_placeholder<B>(f: &mut Frame<B>, area: Rect) -> io::Result<()>
-    where B: Backend
-{
-    Paragraph::new([].iter())
+fn draw_placeholder(f: &mut Frame, area: Rect) -> io::Result<()> {
+    let widget = Paragraph::new(vec![])
         .block(Block::default()
             .borders(Borders::ALL)
-            .title("No counter selected"))
-        .render(f, area);
+            .title("No counter selected"));
+    f.render_widget(widget, area);
     Ok(())
 }
 

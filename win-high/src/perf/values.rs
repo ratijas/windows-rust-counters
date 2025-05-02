@@ -120,7 +120,7 @@ fn get_value<'a, 'b>(def: &'a PerfCounterDefinition, block: &'b PerfCounterBlock
                     match encoding {
                         Text::Unicode => {
                             let u16slice = upcast::<u16>(slice).map_err(|_| ValueError::BadSize)?;
-                            let text = U16CStr::from_slice_with_nul(u16slice).map_err(|_| ValueError::StringFormat)?;
+                            let text = U16CStr::from_slice_truncate(u16slice).map_err(|_| ValueError::StringFormat)?;
                             CounterVal::TextUnicode(text)
                         }
                         Text::Ascii => {

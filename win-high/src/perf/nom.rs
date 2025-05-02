@@ -169,7 +169,7 @@ pub fn u16cstr<C: ToUsize>(input: &[u8], offset: C, len: C) -> IResult<&[u8], &U
     let (i2, u8slice) = ::nom::bytes::complete::take(len.to_usize())(i1)?;
     // SAFETY: nul-terminated c-style string is verified by U16CStr constructor.
     let (_empty, u16slice) = unsafe { view(u8slice) }?;
-    let u16cstr = U16CStr::from_slice_with_nul(u16slice)
+    let u16cstr = U16CStr::from_slice_truncate(u16slice)
         .map_err(|_| Err::Failure((input, ErrorKind::Char)))?;
     IResult::Ok((i2, u16cstr))
 }

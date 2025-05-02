@@ -6,10 +6,8 @@ edition = "2018"
 
 [dependencies]
 argh = "0.1.3"
-hexyl = "*"
-figlet-rs = "0.1.3"
-# temporary workaround.  at the time of writing, 1.0.3 just came out and broke the build.
-quote = "=1.0.1"
+hexyl = "0.16.0"
+figlet-rs = "0.1.5"
 
 morse-stream = { path = "../../morse-stream" }
 signal-flow = { path = "../../signal-flow" }
@@ -24,9 +22,9 @@ features = [
 ]
 
 [dependencies.crossterm]
-version = "0.14"
+version = "0.29"
 features = ["event-stream"]
-[dependencies.tui]
-version = "0.8.0"
+[dependencies.ratatui]
+version = "0.29.0"
 default-features = false
 features = ["crossterm"]

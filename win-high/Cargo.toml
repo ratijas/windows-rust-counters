@@ -8,10 +8,10 @@ edition = "2018"
 name = "win_high"
 
 [dependencies]
-bitflags = "1"
-itertools = "0.8"
+bitflags = "2"
+itertools = "0.14"
 nom = "5.1"
-widestring = "0.4"
+widestring = "0.5"
 
 [dev-dependencies]
 lazy_static = "1"

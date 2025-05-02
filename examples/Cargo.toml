@@ -8,9 +8,7 @@ description = "Dummy library to gather single-file examples in one place"
 [dependencies]
 
 libc = "0.2"
-hexyl = "0.7"
-# temporary workaround.  at the time of writing, 1.0.3 just came out and broke the build.
-quote = "=1.0.1"
+hexyl = "0.16.0"
 
 signal-flow = { path = "../signal-flow" }
 morse-stream = { path = "../morse-stream" }

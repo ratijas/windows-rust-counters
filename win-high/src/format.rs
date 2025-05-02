@@ -147,9 +147,9 @@ mod test {
         static ref U_ABC_DEF: U16String = U16String::from_str("abc\0def\0\0"); // ["abc\0", "def\0"]
         static ref U_NUL_DEF: U16String = U16String::from_str("\0def\0\0");    // ["\0", "def\0"]
 
-        static ref UC_EMP: U16CString = unsafe { U16CString::from_str_with_nul_unchecked("\0") };
-        static ref UC_ABC: U16CString = unsafe { U16CString::from_str_with_nul_unchecked("abc\0") };
-        static ref UC_DEF: U16CString = unsafe { U16CString::from_str_with_nul_unchecked("def\0") };
+        static ref UC_EMP: U16CString = unsafe { U16CString::from_str_unchecked("\0") };
+        static ref UC_ABC: U16CString = unsafe { U16CString::from_str_unchecked("abc\0") };
+        static ref UC_DEF: U16CString = unsafe { U16CString::from_str_unchecked("def\0") };
     }
 
     #[test]

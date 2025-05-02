@@ -1,3 +1,6 @@
+#![allow(unused_imports)]
+#![allow(ambiguous_glob_reexports)]
+
 //! Everything you need to get satrted with WinAPI.
 pub use std::ptr::{self, null, null_mut};
 
