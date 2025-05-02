@@ -32,7 +32,7 @@ const _: PM_CLOSE_PROC = Some(MyCloseProc);
 
 #[no_mangle]
 extern "system" fn MyOpenProc(pContext: PCWSTR) -> u32 {
-    winlog::init("Morse").unwrap();
+    eventlog::init("Morse", log::Level::Info).unwrap();
 
     let ctx = if pContext.is_null() {
         vec![]
