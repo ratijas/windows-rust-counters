@@ -3,19 +3,19 @@
 //! [one]: https://docs.microsoft.com/en-us/windows/win32/perfctrs/calculating-counter-values
 //! [two]: https://docs.microsoft.com/en-us/windows/win32/perfctrs/retrieving-counter-data
 
-use win_low::winperf::*;
-
 use crate::perf::types::*;
-use crate::prelude::v1::*;
+use crate::prelude::v2::*;
+
+use win_low::um::winperf::*;
 
 #[allow(non_snake_case)]
 #[derive(Debug)]
 pub struct Sample {
     CounterType: CounterTypeDefinition,
-    Data: ULONGLONG,
-    Time: LONGLONG,
-    MultiCounterData: DWORD,
-    Frequency: LONGLONG,
+    Data: u64,
+    Time: i64,
+    MultiCounterData: u32,
+    Frequency: i64,
 }
 
 pub unsafe fn get_sample(
@@ -40,57 +40,57 @@ pub unsafe fn get_sample(
         | PERF_COUNTER_QUEUELEN_TYPE
         | PERF_SAMPLE_COUNTER
         => {
-            sample.Data = (data_ptr as *const DWORD).read() as ULONGLONG;
-            sample.Time = *perf_data.PerfTime.QuadPart();
+            sample.Data = (data_ptr as *const u32).read() as u64;
+            sample.Time = perf_data.PerfTime;
             if PERF_COUNTER_COUNTER == counter.CounterType || PERF_SAMPLE_COUNTER == counter.CounterType
             {
-                sample.Frequency = *perf_data.PerfFreq.QuadPart();
+                sample.Frequency = perf_data.PerfFreq;
             }
         }
         PERF_OBJ_TIME_TIMER => {
-            sample.Data = (data_ptr as *const DWORD).read() as ULONGLONG;
-            sample.Time = *object.PerfTime.QuadPart();
+            sample.Data = (data_ptr as *const u32).read() as u64;
+            sample.Time = object.PerfTime;
         }
         PERF_COUNTER_100NS_QUEUELEN_TYPE => {
-            sample.Data = (data_ptr as *const ULONGLONG).read_unaligned();
-            sample.Time = *perf_data.PerfTime100nSec.QuadPart();
+            sample.Data = (data_ptr as *const u64).read_unaligned();
+            sample.Time = perf_data.PerfTime100nSec;
         }
         PERF_COUNTER_OBJ_TIME_QUEUELEN_TYPE => {
-            sample.Data = (data_ptr as *const ULONGLONG).read_unaligned();
-            sample.Time = *object.PerfTime.QuadPart();
+            sample.Data = (data_ptr as *const u64).read_unaligned();
+            sample.Time = object.PerfTime;
         }
         PERF_COUNTER_TIMER
         | PERF_COUNTER_TIMER_INV
         | PERF_COUNTER_BULK_COUNT
         | PERF_COUNTER_LARGE_QUEUELEN_TYPE
         => {
-            sample.Data = (data_ptr as *const ULONGLONG).read_unaligned();
-            sample.Time = *perf_data.PerfTime.QuadPart();
+            sample.Data = (data_ptr as *const u64).read_unaligned();
+            sample.Time = perf_data.PerfTime;
             if counter.CounterType == PERF_COUNTER_BULK_COUNT
             {
-                sample.Frequency = *perf_data.PerfFreq.QuadPart();
+                sample.Frequency = perf_data.PerfFreq;
             }
         }
         PERF_COUNTER_MULTI_TIMER
         | PERF_COUNTER_MULTI_TIMER_INV
         => {
-            sample.Data = (data_ptr as *const ULONGLONG).read_unaligned();
-            sample.Frequency = *perf_data.PerfFreq.QuadPart();
-            sample.Time = *perf_data.PerfTime.QuadPart();
+            sample.Data = (data_ptr as *const u64).read_unaligned();
+            sample.Frequency = perf_data.PerfFreq;
+            sample.Time = perf_data.PerfTime;
         }
         //These counters do not use any time reference.
         PERF_COUNTER_RAWCOUNT
         | PERF_COUNTER_RAWCOUNT_HEX
         | PERF_COUNTER_DELTA
         => {
-            sample.Data = (data_ptr as *const DWORD).read() as ULONGLONG;
+            sample.Data = (data_ptr as *const u32).read() as u64;
             sample.Time = 0;
         }
         PERF_COUNTER_LARGE_RAWCOUNT
         | PERF_COUNTER_LARGE_RAWCOUNT_HEX
         | PERF_COUNTER_LARGE_DELTA
         => {
-            sample.Data = (data_ptr as *const ULONGLONG).read_unaligned();
+            sample.Data = (data_ptr as *const u64).read_unaligned();
             sample.Time = 0;
         }
         //These counters use the 100ns time base in their calculation.
@@ -99,8 +99,8 @@ pub unsafe fn get_sample(
         | PERF_100NSEC_MULTI_TIMER
         | PERF_100NSEC_MULTI_TIMER_INV
         => {
-            sample.Data = (data_ptr as *const ULONGLONG).read_unaligned();
-            sample.Time = *perf_data.PerfTime100nSec.QuadPart();
+            sample.Data = (data_ptr as *const u64).read_unaligned();
+            sample.Time = perf_data.PerfTime100nSec;
             // XXX: MultiCounterData after match
         }
         //These counters use two data points, this value and one from this counter's
@@ -109,23 +109,23 @@ pub unsafe fn get_sample(
         PERF_SAMPLE_FRACTION
         | PERF_RAW_FRACTION
         => {
-            sample.Data = (data_ptr as *const DWORD).read() as ULONGLONG;
+            sample.Data = (data_ptr as *const u32).read() as u64;
             //Get base counter
             base_counter_ptr = base_counter_ptr.offset(1);
             if (counter.CounterType & PERF_COUNTER_BASE) == PERF_COUNTER_BASE {
                 let data_ptr = buffer.offset(base_counter_ptr.read().CounterOffset as _);
-                sample.Time = (data_ptr as *const DWORD).read() as _;
+                sample.Time = (data_ptr as *const u32).read() as _;
             } else {
                 return Err(());
             }
         }
         PERF_LARGE_RAW_FRACTION => {
-            sample.Data = (data_ptr as *const ULONGLONG).read_unaligned();
+            sample.Data = (data_ptr as *const u64).read_unaligned();
             // XXX: duplicate fragment from above, except for DWORD vs LONGLONG reads
             base_counter_ptr = base_counter_ptr.offset(1);
             if (counter.CounterType & PERF_COUNTER_BASE) == PERF_COUNTER_BASE {
                 let data_ptr = buffer.offset(base_counter_ptr.read().CounterOffset as _);
-                sample.Time = (data_ptr as *const LONGLONG).read();
+                sample.Time = (data_ptr as *const i64).read();
             } else {
                 return Err(());
             }
@@ -134,12 +134,12 @@ pub unsafe fn get_sample(
         | PERF_PRECISION_100NS_TIMER
         | PERF_PRECISION_OBJECT_TIMER
         => {
-            sample.Data = (data_ptr as *const ULONGLONG).read_unaligned();
+            sample.Data = (data_ptr as *const u64).read_unaligned();
             // XXX: duplicate fragment from above, except for DWORD vs LONGLONG reads
             base_counter_ptr = base_counter_ptr.offset(1);
             if (counter.CounterType & PERF_COUNTER_BASE) == PERF_COUNTER_BASE {
                 let data_ptr = buffer.offset(base_counter_ptr.read().CounterOffset as _);
-                sample.Time = (data_ptr as *const LONGLONG).read();
+                sample.Time = (data_ptr as *const i64).read();
             } else {
                 return Err(());
             }
@@ -147,18 +147,18 @@ pub unsafe fn get_sample(
         PERF_AVERAGE_TIMER
         | PERF_AVERAGE_BULK
         => {
-            sample.Data = (data_ptr as *const ULONGLONG).read_unaligned();
+            sample.Data = (data_ptr as *const u64).read_unaligned();
             // XXX: duplicate fragment from above, except for DWORD vs LONGLONG reads
             base_counter_ptr = base_counter_ptr.offset(1);
             if (counter.CounterType & PERF_COUNTER_BASE) == PERF_COUNTER_BASE {
                 let data_ptr = buffer.offset(base_counter_ptr.read().CounterOffset as _);
-                sample.Time = (data_ptr as *const DWORD).read() as _;
+                sample.Time = (data_ptr as *const u32).read() as _;
             } else {
                 return Err(());
             }
 
             if counter.CounterType == PERF_AVERAGE_TIMER {
-                sample.Frequency = *perf_data.PerfFreq.QuadPart();
+                sample.Frequency = perf_data.PerfFreq;
             }
         }
         //These are base counters and are used in calculations for other counters.
@@ -172,9 +172,9 @@ pub unsafe fn get_sample(
             return Err(());
         }
         PERF_ELAPSED_TIME => {
-            sample.Data = (data_ptr as *const ULONGLONG).read_unaligned();
-            sample.Time = *object.PerfTime.QuadPart();
-            sample.Frequency = *object.PerfFreq.QuadPart();
+            sample.Data = (data_ptr as *const u64).read_unaligned();
+            sample.Time = object.PerfTime;
+            sample.Frequency = object.PerfFreq;
         }
         // These counters are currently not supported.
         PERF_COUNTER_TEXT
@@ -192,7 +192,7 @@ pub unsafe fn get_sample(
     //this counter value in the counter data block. The value is needed for
     //the calculation.
     if counter_type.calculation_modifiers().contains(CalculationModifiers::MULTI) {
-        sample.MultiCounterData = ((data_ptr as *const ULONGLONG).offset(1) as *const DWORD).read_unaligned();
+        sample.MultiCounterData = ((data_ptr as *const u64).offset(1) as *const u32).read_unaligned();
     }
     Ok(sample)
 }
@@ -225,7 +225,7 @@ pub fn display_calculated_value(new: &Sample, old_opt: Option<&Sample>) -> Resul
             let old = old_opt.unwrap();
             let numerator = old.Data - new.Data;
             let denominator = old.Time - new.Time;
-            let value = (numerator as f64 / (denominator as f64 / old.Frequency as f64)) as DWORD;
+            let value = (numerator as f64 / (denominator as f64 / old.Frequency as f64)) as u32;
             let suffix = if new.CounterType.into_raw() == PERF_SAMPLE_COUNTER { "" } else { "/sec" };
             format!("{}{}", value, suffix)
         }

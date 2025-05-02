@@ -1,5 +1,4 @@
-//! Missing file that should belong to winapi crate
-#[macro_use]
-extern crate winapi;
+//! Missing windows API.
+#![allow(bad_style, unused)]
 
-pub mod winperf;
+pub mod um;

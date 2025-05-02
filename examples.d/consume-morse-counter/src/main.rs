@@ -29,7 +29,7 @@ use win_high::{
         nom::*,
         values::CounterVal,
     },
-    prelude::v1::*,
+    prelude::v2::*,
 };
 use win_high::perf::consume::AllCounters;
 use win_high::perf::useful::InstanceId;
@@ -82,7 +82,7 @@ const HIST_SIZE: usize = 200;
 pub struct InstanceStats {
     pub instance_id: InstanceId,
     pub name: String,
-    pub signal: VecDeque<DWORD>,
+    pub signal: VecDeque<u32>,
 }
 
 impl ObjectStats {
@@ -179,7 +179,7 @@ pub struct AppInner {
 
 pub struct ViewState {
     font: FIGfont,
-    active_counter: DWORD,
+    active_counter: u32,
 }
 
 impl App {
@@ -420,7 +420,7 @@ fn clean_on_exit(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<()
 }
 
 #[derive(Debug)]
-pub struct DataPair(InstanceId, DWORD);
+pub struct DataPair(InstanceId, u32);
 
 fn get_as_dword(object: &PerfObjectType, counter: &PerfCounterDefinition) -> Vec<DataPair> {
     match &object.data {
@@ -437,7 +437,7 @@ fn get_as_dword(object: &PerfObjectType, counter: &PerfCounterDefinition) -> Vec
 
 fn get_as_dword_inner(instance: InstanceId, counter: &PerfCounterDefinition, block: &PerfCounterBlock) -> DataPair {
     match CounterVal::try_get(counter, block).unwrap() {
-        CounterVal::Dword(dword) => DataPair(instance, dword as DWORD),
+        CounterVal::Dword(dword) => DataPair(instance, dword),
         _ => unimplemented!(),
     }
 }

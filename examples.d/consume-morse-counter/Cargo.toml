@@ -15,15 +15,11 @@ signal-flow = { path = "../../signal-flow" }
 [target.'cfg(windows)'.dependencies]
 win-high = { path = "../../win-high" }
 win-low = { path = "../../win-low" }
-[target.'cfg(windows)'.dependencies.winapi]
-version = "0.3"
-features = [
-    "winnt",
-]
 
 [dependencies.crossterm]
 version = "0.29"
 features = ["event-stream"]
+
 [dependencies.ratatui]
 version = "0.29.0"
 default-features = false

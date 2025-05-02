@@ -9,8 +9,7 @@ use win_high::perf::{
     types::*,
     values::*,
 };
-use win_high::prelude::v1::*;
-use win_low::winperf::*;
+use win_high::prelude::v2::*;
 
 fn main() {
     println!("Align of PERF_DATA_BLOCK          = {}", align_of::<PERF_DATA_BLOCK>());
@@ -18,13 +17,13 @@ fn main() {
     println!("Align of PERF_INSTANCE_DEFINITION = {}", align_of::<PERF_INSTANCE_DEFINITION>());
     println!("Align of PERF_COUNTER_DEFINITION  = {}", align_of::<PERF_COUNTER_DEFINITION>());
     println!("Align of PERF_COUNTER_BLOCK       = {}", align_of::<PERF_COUNTER_BLOCK>());
-    println!("Align of DWORD                    = {}", align_of::<DWORD>());
+    println!("Align of DWORD                    = {}", align_of::<u32>());
 
     let meta = get_counters_info(None, UseLocale::English)
         .expect("get_counters_info");
 
     // make sure we close HKEY afterwards
-    let _hkey = RegConnectRegistryW_Safe(null(), HKEY_PERFORMANCE_DATA)
+    let _hkey = RegConnectRegistryW_Safe(PCWSTR::null(), HKEY_PERFORMANCE_DATA)
         .expect("connect to registry");
 
     {
@@ -39,10 +38,10 @@ fn main() {
         print_perf_data(&perf_data, &meta);
     }
 
-    const SYSTEM_NAME_INDEX: DWORD = 11962;
-    let counter_uptime_index: DWORD = meta.map().iter()
+    const SYSTEM_NAME_INDEX: u32 = 11962;
+    let counter_uptime_index: u32 = meta.map().iter()
         .find(|(_, counter)| counter.name_value.as_str() == "SOS")
-        .map(|(&index, _)| index as DWORD)
+        .map(|(&index, _)| index as u32)
         .expect("Uptime counter name not found");
 
     println!();
@@ -76,7 +75,6 @@ fn main() {
             let value = CounterVal::try_get(counter_uptime, block).expect("get value");
             println!("Value: {:?}", value);
 
-            // use winapi::um::sysinfoapi::GetTickCount;
             // use win_high::perf::display::*;
             // {
             //     let raw = get_slice(counter_uptime, block).expect("get slice");
@@ -134,7 +132,7 @@ fn print_counters_data(left_pad: &str, counters: &[PerfCounterDefinition], block
 }
 
 fn do_get_values() -> WinResult<Vec<u8>> {
-    let mut typ: DWORD = 0;
+    let mut typ: REG_VALUE_TYPE = REG_NONE;
 
     // Retrieve counter data for the Processor object.
     let value = query_value(
@@ -144,7 +142,7 @@ fn do_get_values() -> WinResult<Vec<u8>> {
         Some(2_000_000),
     )?;
 
-    assert_eq!(typ, 3);  // should be 3, which means binary
+    assert_eq!(typ, REG_BINARY);
 
     Ok(value)
 }

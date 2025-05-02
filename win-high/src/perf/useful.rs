@@ -1,15 +1,13 @@
+use std::cmp::Ordering;
+use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::hash::{Hash, Hasher};
+use std::sync::{Arc, Mutex};
 
-use win_low::winperf::*;
-
+use crate::perf::nom::PerfInstanceDefinition;
 use crate::perf::provide::{PerfCounterDefinitionTemplate, PerfInstanceDefinitionTemplate};
 use crate::perf::values::*;
-use crate::prelude::v1::*;
-use std::sync::{Arc, Mutex};
-use std::collections::HashMap;
-use crate::perf::nom::PerfInstanceDefinition;
-use std::cmp::Ordering;
+use crate::prelude::v2::*;
 
 /// Wrapper around `NumInstances` attribute.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -35,10 +33,10 @@ impl NumInstances {
     }
 }
 
-impl TryFrom<LONG> for NumInstances {
+impl TryFrom<i32> for NumInstances {
     type Error = ();
 
-    fn try_from(value: LONG) -> Result<Self, Self::Error> {
+    fn try_from(value: i32) -> Result<Self, Self::Error> {
         match value {
             PERF_NO_INSTANCES => Ok(Self::NoInstances),
             n if n >= 0 && n <= 1024 => Ok(Self::N(n as _)),
@@ -47,7 +45,7 @@ impl TryFrom<LONG> for NumInstances {
     }
 }
 
-impl From<NumInstances> for LONG {
+impl From<NumInstances> for i32 {
     fn from(this: NumInstances) -> Self {
         match this {
             NumInstances::NoInstances => PERF_NO_INSTANCES,
@@ -62,7 +60,7 @@ pub struct InstanceId {
     /// UniqueID field of `PERF_INSTANCE_DEFINITION` block.
     /// When id is PERF_NO_UNIQUE_ID, then
     /// name will be used for search and comparison.
-    unique_id: LONG,
+    unique_id: i32,
     /// Name of instance. When `unique_id` is not available,
     /// name will be used for search and comparison.
     /// Only one instance without name may exist in one object.
@@ -71,20 +69,20 @@ pub struct InstanceId {
 
 impl InstanceId {
     /// Construct `InstanceId` from raw parts. Prefer using `From` conversions instead.
-    pub fn new(unique_id: LONG, name: U16CString) -> Self {
+    pub fn new(unique_id: i32, name: &U16CStr) -> Self {
         InstanceId {
             unique_id,
-            name,
+            name: name.to_owned(),
         }
     }
 
     /// `InstanceId` for an implicit global instance when number of instances is `PERF_NO_INSTANCES`.
     pub fn perf_no_instances() -> Self {
-        InstanceId::new(PERF_NO_UNIQUE_ID, unsafe { U16CString::from_str_unchecked("") })
+        InstanceId::new(PERF_NO_UNIQUE_ID, u16cstr!(""))
     }
 
     /// `None` iff unique ID is `PERF_NO_UNIQUE_ID`.
-    pub fn unique_id(&self) -> Option<LONG> {
+    pub fn unique_id(&self) -> Option<i32> {
         match self.unique_id {
             PERF_NO_UNIQUE_ID => None,
             id => Some(id),
@@ -99,13 +97,13 @@ impl InstanceId {
 
 impl<'a> From<&PerfInstanceDefinitionTemplate<'a>> for InstanceId {
     fn from(value: &PerfInstanceDefinitionTemplate<'a>) -> Self {
-        InstanceId::new(value.UniqueID, value.Name.to_ucstring())
+        InstanceId::new(value.UniqueID, &value.Name)
     }
 }
 
 impl<'a> From<&PerfInstanceDefinition<'a>> for InstanceId {
     fn from(def: &PerfInstanceDefinition<'a>) -> Self {
-        InstanceId::new(def.UniqueID, def.name.to_owned())
+        InstanceId::new(def.UniqueID, def.name)
     }
 }
 
@@ -187,11 +185,11 @@ impl std::fmt::Display for InstanceId {
 pub struct CounterId {
     /// `CounterNameTitleIndex` before adding index of first counter.
     /// Essentially, it is the index defined in the header / symbols file.
-    name_index_offset: DWORD,
+    name_index_offset: u32,
 }
 
 impl CounterId {
-    pub fn new(name_index_offset: DWORD) -> Self {
+    pub fn new(name_index_offset: u32) -> Self {
         CounterId { name_index_offset }
     }
 }
@@ -202,8 +200,8 @@ impl From<&PerfCounterDefinitionTemplate> for CounterId {
     }
 }
 
-impl From<DWORD> for CounterId {
-    fn from(value: DWORD) -> Self {
+impl From<u32> for CounterId {
+    fn from(value: u32) -> Self {
         CounterId::new(value)
     }
 }
@@ -273,11 +271,11 @@ mod test {
 
     #[test]
     fn test_hash_instance_id() {
-        let i1 = InstanceId::new(42, U16CString::from_str("abc").unwrap());
-        let i2 = InstanceId::new(42, U16CString::from_str("abc").unwrap());
-        let i3 = InstanceId::new(37, U16CString::from_str("abc").unwrap());
-        let i4_a = InstanceId::new(PERF_NO_UNIQUE_ID, U16CString::from_str("a").unwrap());
-        let i4_b = InstanceId::new(PERF_NO_UNIQUE_ID, U16CString::from_str("b").unwrap());
+        let i1 = InstanceId::new(42, u16cstr!("abc"));
+        let i2 = InstanceId::new(42, u16cstr!("abc"));
+        let i3 = InstanceId::new(37, u16cstr!("abc"));
+        let i4_a = InstanceId::new(PERF_NO_UNIQUE_ID, u16cstr!("a"));
+        let i4_b = InstanceId::new(PERF_NO_UNIQUE_ID, u16cstr!("b"));
         let i5 = InstanceId::perf_no_instances();
         let i6 = InstanceId::perf_no_instances();
 

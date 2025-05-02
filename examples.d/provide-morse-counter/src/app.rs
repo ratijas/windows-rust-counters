@@ -9,7 +9,7 @@ use signal_flow::*;
 use signal_flow::rtsm::*;
 use win_high::perf::useful::*;
 use win_high::perf::values::*;
-use win_high::prelude::v1::*;
+use win_high::prelude::v2::*;
 
 use crate::reg::*;
 use crate::strings_providers::{ConstString, RandomJokeProvider, StringsProvider};
@@ -69,9 +69,9 @@ impl App {
                     self.instances.extend(
                         (0..(n as usize))
                             .map(|i| {
-                                let unique_id = i as LONG;
+                                let unique_id = i as i32;
                                 let name = Self::name_for_instance(i, width);
-                                InstanceId::new(unique_id, name)
+                                InstanceId::new(unique_id, &name)
                             })
                     )
                 }
@@ -163,8 +163,8 @@ impl WorkerBuilder {
         for (i, _instance) in instances.iter().cloned().enumerate() {
             let (tx, rx) = signal_flow::pair::pair();
             // let ranges = RtsmRanges::new(10..50, 60..100).unwrap();
-            let off = 10 + 10 * (i as DWORD % 4);
-            let on = 60 + 10 * (i as DWORD % 4);
+            let off = 10 + 10 * (i as u32 % 4);
+            let on = 60 + 10 * (i as u32 % 4);
             let ranges = RtsmRanges::new(off..off + 10, on..on + 10).unwrap();
             let rtsm = RtsmTx::new(ranges, tx);
             rtsm_coders.push((rtsm, rx));

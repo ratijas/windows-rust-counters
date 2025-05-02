@@ -2,51 +2,51 @@
 
 use std::rc::Rc;
 
-use crate::prelude::v1::*;
+use crate::prelude::v2::*;
 
 pub fn RegConnectRegistryW_Safe(
-    lpMachineName: LPCWSTR,
+    lpMachineName: PCWSTR,
     hKey: HKEY,
 ) -> WinResult<HKey_Safe> {
-    let mut phkResult: HKEY = null_mut();
+    let mut phkResult: HKEY = HKEY::default();
 
     unsafe {
         let error_code = RegConnectRegistryW(
             lpMachineName,
             hKey,
-            &mut phkResult as PHKEY,
-        ) as DWORD;
+            &mut phkResult as *mut HKEY,
+        );
 
         if error_code != ERROR_SUCCESS {
             return Err(WinError::new_with_message(error_code));
         }
     }
-    assert!(!phkResult.is_null());
+    assert!(!phkResult.is_invalid());
     Ok(HKey_Safe::owned(phkResult))
 }
 
 pub fn RegOpenKeyEx_Safe(
     hKey: HKEY,
-    lpSubKey: LPCWSTR,
-    ulOptions: DWORD,
-    samDesired: REGSAM,
+    lpSubKey: PCWSTR,
+    ulOptions: Option<u32>,
+    samDesired: REG_SAM_FLAGS,
 ) -> WinResult<HKey_Safe> {
-    let mut phkResult: HKEY = null_mut();
+    let mut phkResult: HKEY = HKEY::default();
     unsafe {
         let error_code = RegOpenKeyExW(
             hKey,
             lpSubKey,
             ulOptions,
             samDesired,
-            &mut phkResult as PHKEY,
-        ) as DWORD;
+            &mut phkResult as *mut HKEY,
+        );
 
         if error_code != ERROR_SUCCESS {
             return Err(WinError::new_with_message(error_code));
         }
     }
 
-    assert!(!phkResult.is_null());
+    assert!(!phkResult.is_invalid());
     Ok(HKey_Safe::owned(phkResult))
 }
 
@@ -56,7 +56,7 @@ pub fn RegCloseKey_Safe(
     unsafe {
         let error_code = RegCloseKey(
             hKey
-        ) as DWORD;
+        );
 
         if error_code != ERROR_SUCCESS {
             return Err(WinError::new_with_message(error_code));

@@ -1,8 +1,8 @@
-use win_high::prelude::v1::*;
+use win_high::prelude::v2::*;
 
 fn main() {
     match RegConnectRegistryW_Safe(
-        null(),
+        PCWSTR::null(),
         HKEY_PERFORMANCE_DATA,
     ) {
         Err(err) => {

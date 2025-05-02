@@ -1,9 +1,8 @@
 use std::error::Error;
 
 use log::{error, info};
-use winapi::um::winnt::KEY_READ;
 
-use win_high::prelude::v1::*;
+use win_high::prelude::v2::*;
 
 pub trait StringsProvider {
     fn provide(&mut self) -> String;
@@ -41,8 +40,8 @@ impl RegKeyStringsProvider {
     fn fetch(&mut self) -> WinResult<String> {
         let hkey = RegOpenKeyEx_Safe(
             HKEY_LOCAL_MACHINE,
-            self.sub_key.as_ptr(),
-            0,
+            PCWSTR(self.sub_key.as_ptr()),
+            None,
             KEY_READ,
         )?;
         let buffer = query_value(

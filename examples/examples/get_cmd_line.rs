@@ -1,13 +1,14 @@
 use libc::wcslen;
-use win_high::prelude::v1::*;
-use winapi;
+use widestring::U16String;
+use windows::Win32::System::Environment::*;
+use windows_core::*;
 
 fn main() {
     let cmd = unsafe {
-        let buf: LPWSTR = winapi::um::processenv::GetCommandLineW();
-        let len = wcslen(buf);
+        let buf: PCWSTR = GetCommandLineW();
+        let len = wcslen(buf.0);
 
-        let wstr = WideString::from_ptr(buf, len);
+        let wstr = U16String::from_ptr(buf.0, len);
         wstr.to_string_lossy()
     };
     println!("Hello, Windows! My full command line is: {}", cmd);

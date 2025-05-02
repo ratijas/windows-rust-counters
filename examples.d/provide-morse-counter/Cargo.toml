@@ -28,11 +28,13 @@ signal-flow = { path = "../../signal-flow" }
 [target.'cfg(windows)'.dependencies]
 win-high = { path = "../../win-high" }
 win-low = { path = "../../win-low" }
-[target.'cfg(windows)'.dependencies.winapi]
-version = "0.3"
+
+[target.'cfg(windows)'.dependencies.windows]
+version = "0.61"
 features = [
-    "winnt",
-    "winuser",
+    "Win32_Foundation",
+    "Win32_System_Performance",
+    "Win32_System_Registry",
 ]
 
 [build-dependencies]

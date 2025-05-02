@@ -9,6 +9,7 @@ description = "Dummy library to gather single-file examples in one place"
 
 libc = "0.2"
 hexyl = "0.16.0"
+widestring = "1.2"
 
 signal-flow = { path = "../signal-flow" }
 morse-stream = { path = "../morse-stream" }
@@ -17,8 +18,11 @@ morse-stream = { path = "../morse-stream" }
 win-high = { path = "../win-high" }
 win-low = { path = "../win-low" }
 
-[target.'cfg(windows)'.dependencies.winapi]
-version = "0.3"
+[target.'cfg(windows)'.dependencies.windows]
+version = "0.61"
 features = [
-    "processenv",
+    "Win32_System_Environment",
 ]
+
+[target.'cfg(windows)'.dependencies.windows-core]
+version = "0.61"

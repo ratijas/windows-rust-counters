@@ -1,26 +1,26 @@
 use std::collections::BTreeMap;
 use std::mem;
+use std::str::FromStr;
 
 use itertools::Itertools;
-use winapi::um::sysinfoapi::*;
-use winapi::um::winnls::*;
+use windows::Win32::Globalization::*;
+use windows::Win32::System::SystemInformation::*;
+use win_low::um::winnt::*;
 
-use crate::prelude::v1::*;
-use winapi::um::winnt::{OSVERSIONINFOW};
-use std::str::FromStr;
+use crate::prelude::v2::*;
 
 /// Translated function `GetLanguageId` from [MSDN].
 ///
 /// [MSDN]: https://docs.microsoft.com/en-us/windows/win32/perfctrs/retrieving-counter-names-and-explanations
-pub fn get_language_id() -> WinResult<LANGID> {
+pub fn get_language_id() -> WinResult</*LANGID*/ u16> {
     // From the docs:
     // > Before calling the GetVersionEx function, set the dwOSVersionInfoSize member of the
     // > structure as appropriate to indicate which data structure is being passed to this function.
     let mut osvi: OSVERSIONINFOW = unsafe { mem::zeroed() };
-    osvi.dwOSVersionInfoSize = mem::size_of::<OSVERSIONINFOW>() as DWORD;
+    osvi.dwOSVersionInfoSize = mem::size_of::<OSVERSIONINFOW>() as u32;
 
     // SAFETY: dwOSVersionInfoSize member is set
-    if unsafe { GetVersionExW(&mut osvi as *mut _) } == 0 {
+    if unsafe { GetVersionExW(&mut osvi as *mut _) }.is_err() {
         return Err(WinError::get_with_message().with_comment("GetVersionExW failed"));
     }
 
@@ -29,30 +29,30 @@ pub fn get_language_id() -> WinResult<LANGID> {
     // Primary language identifier.
     let primary = PRIMARYLANGID(lang_id);
 
-    Ok(if (LANG_PORTUGUESE == primary && osvi.dwBuildNumber > 5) || // Windows Vista and later
-        (LANG_CHINESE == primary && (osvi.dwMajorVersion == 5 && osvi.dwMinorVersion >= 1)) // XP and Windows Server 2003
+    Ok(if (LANG_PORTUGUESE == primary as u32 && osvi.dwBuildNumber > 5) || // Windows Vista and later
+        (LANG_CHINESE == primary as u32 && (osvi.dwMajorVersion == 5 && osvi.dwMinorVersion >= 1)) // XP and Windows Server 2003
     {
         // Use the complete language identifier.
         lang_id
     } else {
         // Use only primary
-        MAKELANGID(primary, 0)
+        MAKELANGID(primary as u16, 0)
     })
 }
 
 #[derive(Clone, Debug)]
 pub struct CounterMeta {
     // Name index is always even.
-    pub name_index: DWORD,
+    pub name_index: u32,
     pub name_value: String,
     // Help index is always odd, and equals name index + 1.
-    pub help_index: DWORD,
+    pub help_index: u32,
     pub help_value: String,
 }
 
 pub struct AllCounters {
     // Key is the name index
-    table: BTreeMap<DWORD, CounterMeta>
+    table: BTreeMap<u32, CounterMeta>
 }
 
 impl AllCounters {
@@ -62,11 +62,11 @@ impl AllCounters {
         }
     }
 
-    pub fn get(&self, name_index: DWORD) -> Option<&CounterMeta> {
+    pub fn get(&self, name_index: u32) -> Option<&CounterMeta> {
         self.table.get(&name_index)
     }
 
-    pub fn entry(&mut self, name_index: DWORD) -> &mut CounterMeta {
+    pub fn entry(&mut self, name_index: u32) -> &mut CounterMeta {
         let default = CounterMeta {
             name_index,
             name_value: String::new(),
@@ -76,7 +76,7 @@ impl AllCounters {
         self.table.entry(name_index).or_insert(default)
     }
 
-    pub fn map(&self) -> &BTreeMap<DWORD, CounterMeta> {
+    pub fn map(&self) -> &BTreeMap<u32, CounterMeta> {
         &self.table
     }
 }
@@ -92,7 +92,7 @@ pub enum UseLocale {
     UIDefault,
 
     /// `HKEY_PERFORMANCE_DATA` will be used to get strings based on the language identifier.
-    LangId(LANGID),
+    LangId(u16),
 }
 
 impl Default for UseLocale {
@@ -126,8 +126,8 @@ pub fn get_counters_info(machine: Option<String>, locale: UseLocale) -> WinResul
 
     let wsz_machine_name = machine.map(|s| U16CString::from_str(s).unwrap());
     let lp_machine_name = match wsz_machine_name.as_ref() {
-        Some(string_w) => string_w.as_ptr(),
-        None => null(),
+        Some(string_w) => PCWSTR(string_w.as_ptr()),
+        None => PCWSTR::null(),
     };
 
     let text_hkey = RegConnectRegistryW_Safe(lp_machine_name, locale.raw_hkey())?;
@@ -171,7 +171,7 @@ fn u8_as_u16_str(source: &[u8]) -> &U16Str {
     }
 }
 
-fn parse_performance_text_pairs(raw: &[u8]) -> Vec<(DWORD, String)> {
+fn parse_performance_text_pairs(raw: &[u8]) -> Vec<(u32, String)> {
     let raw_u16str = u8_as_u16_str(raw.as_ref());
     let pairs = parse_null_separated_key_value_pairs(raw_u16str);
     pairs

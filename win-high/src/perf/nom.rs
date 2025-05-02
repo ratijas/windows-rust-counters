@@ -5,9 +5,7 @@ use std::mem;
 use nom::{Err, IResult, Needed, Parser, ToUsize};
 use nom::error::ErrorKind;
 
-use win_low::winperf::*;
-
-use crate::prelude::v1::*;
+use crate::prelude::v2::*;
 
 #[derive(Clone)]
 pub struct PerfDataBlock<'a> {

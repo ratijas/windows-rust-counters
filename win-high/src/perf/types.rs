@@ -16,13 +16,11 @@
 use std::fmt::{self, Debug};
 use std::mem::transmute;
 
-use win_low::winperf::*;
-
-use crate::prelude::v1::*;
+use crate::prelude::v2::*;
 
 /// A safe, high-level wrapper for `PERF_COUNTER_DEFINITION.CounterType` value.
 #[derive(Copy, Clone)]
-pub struct CounterTypeDefinition(DWORD);
+pub struct CounterTypeDefinition(u32);
 
 /// Container for bit-masks of `CounterTypeDefinition` components.
 #[repr(u32)]
@@ -172,13 +170,13 @@ pub enum DisplayFlags {
 #[derive(Copy, Clone, Debug)]
 pub enum DetailLevel {
     /// The uninformed can understand it
-    Novice = PERF_DETAIL_NOVICE,
+    Novice = PERF_DETAIL_NOVICE.0,
     /// For the advanced user
-    Advanced = PERF_DETAIL_ADVANCED,
+    Advanced = PERF_DETAIL_ADVANCED.0,
     /// For the expert user
-    Expert = PERF_DETAIL_EXPERT,
+    Expert = PERF_DETAIL_EXPERT.0,
     /// For the system designer
-    Wizard = PERF_DETAIL_WIZARD,
+    Wizard = PERF_DETAIL_WIZARD.0,
 }
 
 impl Default for DetailLevel {
@@ -204,7 +202,7 @@ impl CounterTypeDefinition {
         CounterTypeDefinition(inner)
     }
 
-    pub fn from_raw(value: DWORD) -> Option<Self> {
+    pub fn from_raw(value: u32) -> Option<Self> {
         Some(Self::new(
             Size::from_raw(value),
             CounterType::from_raw(value)?,
@@ -214,7 +212,7 @@ impl CounterTypeDefinition {
         ))
     }
 
-    pub unsafe fn from_raw_unchecked(value: DWORD) -> Self {
+    pub unsafe fn from_raw_unchecked(value: u32) -> Self {
         Self::new(
             Size::from_raw(value),
             CounterType::from_raw_unchecked(value),
@@ -224,7 +222,7 @@ impl CounterTypeDefinition {
         )
     }
     #[inline(always)]
-    pub const fn into_raw(self) -> DWORD {
+    pub const fn into_raw(self) -> u32 {
         self.0
     }
     #[inline(always)]
@@ -236,7 +234,7 @@ impl CounterTypeDefinition {
         RawType::from_raw(self.into_raw())
     }
     #[inline(always)]
-    pub fn sub_type(&self) -> DWORD {
+    pub fn sub_type(&self) -> u32 {
         imp::sub_type(self.into_raw())
     }
     #[inline(always)]
@@ -267,28 +265,28 @@ mod imp {
 
     impl CounterTypeMask {
         #[inline(always)]
-        pub const fn into_raw(self) -> DWORD {
+        pub const fn into_raw(self) -> u32 {
             self as _
         }
     }
 
     impl Size {
-        pub fn from_raw(value: DWORD) -> Self {
+        pub fn from_raw(value: u32) -> Self {
             let value = value & CounterTypeMask::Size.into_raw();
             // SAFETY: enum variants cover all possible values
             unsafe { transmute(value) }
         }
 
         #[inline(always)]
-        pub const fn into_raw(self) -> DWORD {
+        pub const fn into_raw(self) -> u32 {
             self as _
         }
 
         pub fn size_of(self) -> Option<usize> {
             use std::mem::size_of;
             match self {
-                Size::Dword => Some(size_of::<DWORD>()),
-                Size::Large => Some(size_of::<DWORD>() * 2),
+                Size::Dword => Some(size_of::<u32>()),
+                Size::Large => Some(size_of::<u32>() * 2),
                 Size::Zero => Some(0),
                 Size::Var => None,
             }
@@ -296,14 +294,14 @@ mod imp {
     }
 
     impl RawType {
-        pub fn from_raw(value: DWORD) -> Self {
+        pub fn from_raw(value: u32) -> Self {
             let value = value & CounterTypeMask::CounterType.into_raw();
             // SAFETY: enum variants cover all possible values
             unsafe { transmute(value) }
         }
 
         #[inline(always)]
-        pub const fn into_raw(self) -> DWORD {
+        pub const fn into_raw(self) -> u32 {
             self as _
         }
     }
@@ -321,7 +319,7 @@ mod imp {
     }
 
     impl CounterType {
-        pub fn from_raw(value: DWORD) -> Option<Self> {
+        pub fn from_raw(value: u32) -> Option<Self> {
             Some(match RawType::from_raw(value) {
                 RawType::Number => CounterType::Number(Number::from_raw(value)?),
                 RawType::Counter => CounterType::Counter(Counter::from_raw(value)?),
@@ -330,7 +328,7 @@ mod imp {
             })
         }
 
-        pub unsafe fn from_raw_unchecked(value: DWORD) -> Self {
+        pub unsafe fn from_raw_unchecked(value: u32) -> Self {
             match RawType::from_raw(value) {
                 RawType::Number => CounterType::Number(Number::from_raw_unchecked(value)),
                 RawType::Counter => CounterType::Counter(Counter::from_raw_unchecked(value)),
@@ -339,7 +337,7 @@ mod imp {
             }
         }
 
-        pub fn sub_type(&self) -> DWORD {
+        pub fn sub_type(&self) -> u32 {
             match *self {
                 CounterType::Counter(it) => it.into_raw(),
                 CounterType::Number(it) => it.into_raw(),
@@ -352,12 +350,12 @@ mod imp {
     }
 
     #[inline(always)]
-    pub const fn sub_type(value: DWORD) -> DWORD {
+    pub const fn sub_type(value: u32) -> u32 {
         value & CounterTypeMask::CounterSubType.into_raw()
     }
 
     impl Number {
-        pub fn from_raw(value: DWORD) -> Option<Self> {
+        pub fn from_raw(value: u32) -> Option<Self> {
             let value = sub_type(value);
             Some(match value {
                 PERF_NUMBER_HEX => Self::Hex,
@@ -367,19 +365,19 @@ mod imp {
             })
         }
 
-        pub unsafe fn from_raw_unchecked(value: DWORD) -> Self {
+        pub unsafe fn from_raw_unchecked(value: u32) -> Self {
             // SAFETY: unsafe
             transmute(sub_type(value))
         }
 
         #[inline(always)]
-        pub const fn into_raw(self) -> DWORD {
+        pub const fn into_raw(self) -> u32 {
             self as _
         }
     }
 
     impl Counter {
-        pub fn from_raw(value: DWORD) -> Option<Self> {
+        pub fn from_raw(value: u32) -> Option<Self> {
             let value = sub_type(value);
             Some(match value {
                 PERF_COUNTER_VALUE => Self::Value,
@@ -394,19 +392,19 @@ mod imp {
             })
         }
 
-        pub unsafe fn from_raw_unchecked(value: DWORD) -> Self {
+        pub unsafe fn from_raw_unchecked(value: u32) -> Self {
             // SAFETY: unsafe
             transmute(sub_type(value))
         }
 
         #[inline(always)]
-        pub const fn into_raw(self) -> DWORD {
+        pub const fn into_raw(self) -> u32 {
             self as _
         }
     }
 
     impl Text {
-        pub fn from_raw(value: DWORD) -> Option<Self> {
+        pub fn from_raw(value: u32) -> Option<Self> {
             let value = sub_type(value);
             Some(match value {
                 PERF_TEXT_UNICODE => Self::Unicode,
@@ -415,19 +413,19 @@ mod imp {
             })
         }
 
-        pub unsafe fn from_raw_unchecked(value: DWORD) -> Self {
+        pub unsafe fn from_raw_unchecked(value: u32) -> Self {
             // SAFETY: unsafe
             transmute(sub_type(value))
         }
 
         #[inline(always)]
-        pub const fn into_raw(self) -> DWORD {
+        pub const fn into_raw(self) -> u32 {
             self as _
         }
     }
 
     impl Timer {
-        pub fn from_raw(value: DWORD) -> Option<Self> {
+        pub fn from_raw(value: u32) -> Option<Self> {
             let value = value & CounterTypeMask::TimeBase.into_raw();
             Some(match value {
                 PERF_TIMER_TICK => Self::TimerTick,
@@ -437,36 +435,36 @@ mod imp {
             })
         }
 
-        pub unsafe fn from_raw_unchecked(value: DWORD) -> Self {
+        pub unsafe fn from_raw_unchecked(value: u32) -> Self {
             let value = sub_type(value);
             // SAFETY: unsafe
             transmute(value)
         }
 
         #[inline(always)]
-        pub const fn into_raw(self) -> DWORD {
+        pub const fn into_raw(self) -> u32 {
             self as _
         }
     }
 
     impl CalculationModifiers {
-        pub fn from_raw(value: DWORD) -> Option<Self> {
+        pub fn from_raw(value: u32) -> Option<Self> {
             let value = value & CounterTypeMask::CalcModifier.into_raw();
             CalculationModifiers::from_bits(value)
         }
 
-        pub unsafe fn from_raw_truncate(value: DWORD) -> Self {
+        pub unsafe fn from_raw_truncate(value: u32) -> Self {
             let value = value & CounterTypeMask::CalcModifier.into_raw();
             CalculationModifiers::from_bits_truncate(value)
         }
 
-        pub fn into_raw(self) -> DWORD {
+        pub fn into_raw(self) -> u32 {
             self.bits()
         }
     }
 
     impl DisplayFlags {
-        pub fn from_raw(value: DWORD) -> Option<Self> {
+        pub fn from_raw(value: u32) -> Option<Self> {
             let value = value & CounterTypeMask::DisplayFlags.into_raw();
             Some(match value {
                 PERF_DISPLAY_NO_SUFFIX => DisplayFlags::NoSuffix,
@@ -478,13 +476,13 @@ mod imp {
             })
         }
 
-        pub unsafe fn from_raw_unchecked(value: DWORD) -> Self {
+        pub unsafe fn from_raw_unchecked(value: u32) -> Self {
             let value = value & CounterTypeMask::DisplayFlags.into_raw();
             transmute(value)
         }
 
         #[inline(always)]
-        pub const fn into_raw(self) -> DWORD {
+        pub const fn into_raw(self) -> u32 {
             self as _
         }
     }

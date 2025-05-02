@@ -1,10 +1,8 @@
-use std::convert::TryInto;
+use std::convert::TryFrom;
 use std::time::Duration;
 
-use winapi::um::winnt::KEY_READ;
-
 use win_high::perf::useful::*;
-use win_high::prelude::v1::*;
+use win_high::prelude::v2::*;
 
 use crate::strings_providers::*;
 
@@ -17,16 +15,16 @@ pub fn get_number_of_instances() -> NumInstances {
     let sub_key = U16CString::from_str(SUB_KEY_MORSE).unwrap();
     if let Ok(hkey) = RegOpenKeyEx_Safe(
         HKEY_LOCAL_MACHINE,
-        sub_key.as_ptr(),
-        0,
+        PCWSTR(sub_key.as_ptr()),
+        None,
         KEY_READ,
     ) {
         if let Ok(dword) = query_value_dword(
             *hkey,
             VALUE_NAME_NUM_INSTANCES,
         ) {
-            let num = LONG::from_ne_bytes(dword.to_ne_bytes());
-            if let Ok(value) = num.try_into() {
+            let num = i32::from_ne_bytes(dword.to_ne_bytes());
+            if let Ok(value) = NumInstances::try_from(num) {
                 return match value {
                     NumInstances::NoInstances => NumInstances::NoInstances,
                     NumInstances::N(n) => NumInstances::N(n.min(1024).max(1))
@@ -41,8 +39,8 @@ pub fn get_tick_interval() -> Duration {
     let sub_key = U16CString::from_str(SUB_KEY_MORSE).unwrap();
     if let Ok(hkey) = RegOpenKeyEx_Safe(
         HKEY_LOCAL_MACHINE,
-        sub_key.as_ptr(),
-        0,
+        PCWSTR(sub_key.as_ptr()),
+        None,
         KEY_READ,
     ) {
         if let Ok(dword) = query_value_dword(

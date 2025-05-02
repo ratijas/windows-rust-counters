@@ -11,29 +11,22 @@ name = "win_high"
 bitflags = "2"
 itertools = "0.14"
 nom = "8"
-widestring = "0.5"
-
-[dev-dependencies]
-lazy_static = "1"
+widestring = "1.2"
 
 [target.'cfg(windows)'.dependencies]
 win-low = { path = "../win-low" }
 
-[target.'cfg(windows)'.dependencies.winapi]
-version = "0.3"
+[target.'cfg(windows)'.dependencies.windows]
+version = "0.61"
 features = [
-    "errhandlingapi",
-    "minwinbase",
-    "minwindef",
-    "ntdef",
-    "pdh",
-    "processenv",
-    "sysinfoapi",
-    "vadefs",
-    "winbase",
-    "winerror",
-    "winnls",
-    "winnt",
-    "winreg",
-    "winsvc",
+    "Win32_Foundation",
+    "Win32_Globalization",
+    "Win32_System_Diagnostics_Debug",
+    "Win32_System_Performance",
+    "Win32_System_Registry",
+    "Win32_System_SystemInformation",
+    "Win32_System_SystemServices",
 ]
+
+[target.'cfg(windows)'.dependencies.windows-core]
+version = "0.61"

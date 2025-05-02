@@ -1,5 +1,6 @@
-use win_high::prelude::v1::*;
+use win_high::prelude::v2::*;
 use win_high::perf::consume::*;
+use win_low::um::winnt::MAKELANGID;
 
 fn main() {
     println!("English locale:");
@@ -13,7 +14,7 @@ fn main() {
     do_local_counters(UseLocale::LangId(lang_id), Some(3));
 
     println!("Custom LANGID :");
-    let lang_id = MAKELANGID(LANG_RUSSIAN, 0);
+    let lang_id = MAKELANGID(LANG_RUSSIAN as u16, 0);
     do_local_counters(UseLocale::LangId(lang_id), Some(3));
 }
 

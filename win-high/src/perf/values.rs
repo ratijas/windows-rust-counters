@@ -2,13 +2,13 @@ use std::convert::TryFrom;
 
 use crate::perf::nom::*;
 use crate::perf::types::*;
-use crate::prelude::v1::*;
+use crate::prelude::v2::*;
 
 /// Owned wrapper for counter value.
 #[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
 pub enum CounterValue {
-    Dword(DWORD),
-    Large(ULONGLONG),
+    Dword(u32),
+    Large(u64),
     TextUnicode(U16CString),
     TextAscii(String),
     Zero,
@@ -34,8 +34,8 @@ impl CounterValue {
 /// `CounterVal` with a **borrowed** data is returned.
 #[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
 pub enum CounterVal<'a> {
-    Dword(DWORD),
-    Large(ULONGLONG),
+    Dword(u32),
+    Large(u64),
     TextUnicode(&'a U16CStr),
     TextAscii(&'a str),
     Zero,
@@ -75,12 +75,12 @@ impl<'b> CounterVal<'b> {
         unsafe {
             match *self {
                 CounterVal::Dword(dword) => {
-                    let slice: &[DWORD] = &[dword];
+                    let slice: &[u32] = &[dword];
                     let source = downcast(slice);
                     checked_write(source, buffer)?;
                 }
-                CounterVal::Large(large) => {
-                    let slice: &[ULONGLONG] = &[large];
+                CounterVal::Large(qword) => {
+                    let slice: &[u64] = &[qword];
                     let source = downcast(slice);
                     checked_write(source, buffer)?;
                 }
@@ -105,12 +105,12 @@ fn get_value<'a, 'b>(def: &'a PerfCounterDefinition, block: &'b PerfCounterBlock
     let value = unsafe {
         match typ.size() {
             Size::Dword => {
-                let number = upcast::<DWORD>(slice).map_err(|_| ValueError::BadSize)?
+                let number = upcast::<u32>(slice).map_err(|_| ValueError::BadSize)?
                     .get(0).ok_or(ValueError::NoData)?.clone();
                 CounterVal::Dword(number)
             }
             Size::Large => {
-                let number = upcast::<ULONGLONG>(slice).map_err(|_| ValueError::BadSize)?
+                let number = upcast::<u64>(slice).map_err(|_| ValueError::BadSize)?
                     .get(0).ok_or(ValueError::NoData)?.clone();
                 CounterVal::Large(number)
             }

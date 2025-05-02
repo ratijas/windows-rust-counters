@@ -9,8 +9,7 @@ use lazy_static::lazy_static;
 use win_high::format::*;
 use win_high::perf::provide::*;
 use win_high::perf::useful::*;
-use win_high::prelude::v1::*;
-use win_low::winperf::*;
+use win_high::prelude::v2::*;
 
 use crate::app::*;
 use crate::morse::*;
@@ -27,19 +26,19 @@ mod symbols {
 }
 
 // type assertions
-const _: PM_OPEN_PROC = MyOpenProc;
-const _: PM_COLLECT_PROC = MyCollectProc;
-const _: PM_CLOSE_PROC = MyCloseProc;
+const _: PM_OPEN_PROC = Some(MyOpenProc);
+const _: PM_COLLECT_PROC = Some(MyCollectProc);
+const _: PM_CLOSE_PROC = Some(MyCloseProc);
 
 #[no_mangle]
-extern "system" fn MyOpenProc(pContext: LPWSTR) -> DWORD {
+extern "system" fn MyOpenProc(pContext: PCWSTR) -> u32 {
     winlog::init("Morse").unwrap();
 
     let ctx = if pContext.is_null() {
         vec![]
     } else {
         // SAFETY: we have to trust the system
-        unsafe { split_nul_delimited_double_nul_terminated_ptr(pContext) }.collect()
+        unsafe { split_nul_delimited_double_nul_terminated_ptr(pContext.0) }.collect()
     };
     info!("Received request to open with context: {:?}", ctx);
 
@@ -47,20 +46,20 @@ extern "system" fn MyOpenProc(pContext: LPWSTR) -> DWORD {
         Ok(_) => info!("Started global worker"),
         Err(_) => {
             error!("Could not start global worker");
-            return ERROR_ACCESS_DENIED;
+            return ERROR_ACCESS_DENIED.0;
         }
     }
 
-    ERROR_SUCCESS
+    ERROR_SUCCESS.0
 }
 
 #[no_mangle]
 extern "system" fn MyCollectProc(
-    lpValueName: LPWSTR,
-    lppData: *mut LPVOID,
-    lpcbTotalBytes: LPDWORD,
-    lpNumObjectTypes: LPDWORD,
-) -> DWORD {
+    lpValueName: PCWSTR,
+    lppData: *mut *mut core::ffi::c_void,
+    lpcbTotalBytes: *mut u32,
+    lpNumObjectTypes: *mut u32,
+) -> u32 {
     // panics across FFI boundary is UB, hence must handle any errors here
     match collect(
         lpValueName,
@@ -69,7 +68,7 @@ extern "system" fn MyCollectProc(
         lpNumObjectTypes,
     ) {
         Ok(_) => {
-            ERROR_SUCCESS
+            ERROR_SUCCESS.0
         }
         Err(error) => {
             if error.error_code() != ERROR_MORE_DATA {
@@ -79,19 +78,19 @@ extern "system" fn MyCollectProc(
                 lpcbTotalBytes.write(0);
                 lpNumObjectTypes.write(0);
             }
-            error.error_code()
+            error.error_code().0
         }
     }
 }
 
 fn collect(
-    lpValueName: LPWSTR,
-    lppData: *mut LPVOID,
-    lpcbTotalBytes: LPDWORD,
-    lpNumObjectTypes: LPDWORD,
+    lpValueName: PCWSTR,
+    lppData: *mut *mut core::ffi::c_void,
+    lpcbTotalBytes: *mut u32,
+    lpNumObjectTypes: *mut u32,
 ) -> WinResult<()> {
     unsafe {
-        let query = U16CStr::from_ptr_str(lpValueName).to_string_lossy();
+        let query = U16CStr::from_ptr_str(lpValueName.0).to_string_lossy();
         let query_type = QueryType::from_str(&query).map_err(|_| WinError::new(ERROR_BAD_ARGUMENTS))?;
 
         info!("query is: {:?}", query_type);
@@ -109,13 +108,13 @@ fn collect(
 }
 
 #[no_mangle]
-extern "system" fn MyCloseProc() -> DWORD {
+extern "system" fn MyCloseProc() -> u32 {
     info!("Received request to close");
 
     let _ = stop_global_workers().ok();
     info!("Stopped global worker");
 
-    ERROR_SUCCESS
+    ERROR_SUCCESS.0
 }
 
 lazy_static! {

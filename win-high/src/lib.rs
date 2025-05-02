@@ -1,9 +1,6 @@
-//! # Various Rusty wrappers for low-level winapi
+//! # Various Rusty wrappers for lower level Win32 API
 #[macro_use]
 extern crate bitflags;
-#[cfg(test)]
-#[macro_use]
-extern crate lazy_static;
 
 pub mod format;
 pub mod hkey;
