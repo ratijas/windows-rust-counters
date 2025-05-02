@@ -4,8 +4,6 @@ extern crate bitflags;
 #[cfg(test)]
 #[macro_use]
 extern crate lazy_static;
-#[macro_use]
-extern crate nom;
 
 pub mod format;
 pub mod hkey;

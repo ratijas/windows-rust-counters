@@ -1,7 +1,8 @@
 //! Nom parsers for performance data structures
+use core::num::NonZeroUsize;
 use std::mem;
 
-use nom::{Err, IResult, Needed, ToUsize};
+use nom::{Err, IResult, Needed, Parser, ToUsize};
 use nom::error::ErrorKind;
 
 use win_low::winperf::*;
@@ -85,7 +86,7 @@ pub fn perf_data_block(input: &[u8]) -> IResult<&[u8], PerfDataBlock> {
     // again, counting from the beginning of the whole input slice.
     let n = raw.NumObjectTypes as usize;
     let (i1, _) = nom::bytes::complete::take(raw.HeaderLength)(input)?;
-    let (_, object_types) = nom::multi::many_m_n(n, n, perf_object_type)(i1)?;
+    let (_, object_types) = nom::multi::many_m_n(n, n, perf_object_type).parse(i1)?;
     // yet again, skipping TotalByteLength from the beginning the whole input slice.
     let (rest, _) = nom::bytes::complete::take(raw.TotalByteLength)(input)?;
     Ok((rest, PerfDataBlock {
@@ -101,7 +102,7 @@ pub fn perf_object_type(input: &[u8]) -> IResult<&[u8], PerfObjectType> {
     let (_, counters) = {
         let n = raw.NumCounters as usize;
         let (i1, _) = nom::bytes::complete::take(raw.HeaderLength)(input)?;
-        nom::multi::many_m_n(n, n, perf_counter_definition)(i1)?
+        nom::multi::many_m_n(n, n, perf_counter_definition).parse(i1)?
     };
     // after DefinitionLength bytes, comes counters' data.
     // depending of NumInstances, it is either:
@@ -119,7 +120,7 @@ pub fn perf_object_type(input: &[u8]) -> IResult<&[u8], PerfObjectType> {
                 perf_instance_definition,
                 perf_counter_block,
             ),
-        )(i2)?;
+        ).parse(i2)?;
         PerfObjectData::Instances(pairs)
     };
     let (rest, _) = nom::bytes::complete::take(raw.TotalByteLength)(input)?;
@@ -130,13 +131,12 @@ pub fn perf_object_type(input: &[u8]) -> IResult<&[u8], PerfObjectType> {
     }))
 }
 
-// this one is so simple, that a macro is sufficient.
-named!(pub perf_counter_definition<PerfCounterDefinition>,
-    map!(
-        call!(take_struct::<PERF_COUNTER_DEFINITION>),
+pub fn perf_counter_definition(input: &[u8]) -> IResult<&[u8], PerfCounterDefinition> {
+    nom::combinator::map(
+        take_struct::<PERF_COUNTER_DEFINITION>,
         |raw| PerfCounterDefinition { raw }
-    )
-);
+    ).parse(input)
+}
 
 pub fn perf_instance_definition(input: &[u8]) -> IResult<&[u8], PerfInstanceDefinition> {
     let (_, raw) = take_struct::<PERF_INSTANCE_DEFINITION>(input)?;
@@ -161,7 +161,7 @@ pub fn take_struct<S>(input: &[u8]) -> nom::IResult<&[u8], &S> {
     nom::combinator::map(
         nom::bytes::complete::take(mem::size_of::<S>()),
         |s: &[u8]| unsafe { (s.as_ptr() as *const S).as_ref().unwrap() },
-    )(input)
+    ).parse(input)
 }
 
 pub fn u16cstr<C: ToUsize>(input: &[u8], offset: C, len: C) -> IResult<&[u8], &U16CStr> {
@@ -170,7 +170,7 @@ pub fn u16cstr<C: ToUsize>(input: &[u8], offset: C, len: C) -> IResult<&[u8], &U
     // SAFETY: nul-terminated c-style string is verified by U16CStr constructor.
     let (_empty, u16slice) = unsafe { view(u8slice) }?;
     let u16cstr = U16CStr::from_slice_truncate(u16slice)
-        .map_err(|_| Err::Failure((input, ErrorKind::Char)))?;
+        .map_err(|_| Err::Failure(nom::error::Error::new(input, ErrorKind::Char)))?;
     IResult::Ok((i2, u16cstr))
 }
 
@@ -193,25 +193,25 @@ pub unsafe fn downcast_mut<T>(input: &mut [T]) -> &mut [u8] {
 }
 
 /// Error value is the remainder of a division of length by size of `T`.
-pub unsafe fn upcast<T>(input: &[u8]) -> Result<&[T], usize> {
+pub unsafe fn upcast<T>(input: &[u8]) -> Result<&[T], NonZeroUsize> {
     no_zst::<T>();
     let len = input.len() / mem::size_of::<T>();
     let rem = input.len() % mem::size_of::<T>();
-    if rem != 0 {
-        return Err(rem);
+    match NonZeroUsize::new(rem) {
+        Some(rem) => Err(rem),
+        None => Ok(std::slice::from_raw_parts(input.as_ptr().cast(), len)),
     }
-    Ok(std::slice::from_raw_parts(input.as_ptr().cast(), len))
 }
 
 /// Error value is the remainder of a division of length by size of `T`.
-pub unsafe fn upcast_mut<T>(input: &mut [u8]) -> Result<&mut [T], usize> {
+pub unsafe fn upcast_mut<T>(input: &mut [u8]) -> Result<&mut [T], NonZeroUsize> {
     no_zst::<T>();
     let len = input.len() / mem::size_of::<T>();
     let rem = input.len() % mem::size_of::<T>();
-    if rem != 0 {
-        return Err(rem);
+    match NonZeroUsize::new(rem) {
+        Some(rem) => Err(rem),
+        None => Ok(std::slice::from_raw_parts_mut(input.as_mut_ptr().cast(), len)),
     }
-    Ok(std::slice::from_raw_parts_mut(input.as_mut_ptr().cast(), len))
 }
 
 /// Consumes all the input, transmutes input as a slice of `T`.
@@ -223,7 +223,7 @@ pub unsafe fn view<T>(input: &[u8]) -> IResult<&[u8], &[T]> {
     let (empty, i1) = nom::bytes::complete::take(input.len())(input)?;
     debug_assert!(empty.is_empty());
     let slice_t = upcast::<T>(i1)
-        .map_err(|rem| Err::Incomplete(Needed::Size(mem::size_of::<T>() - rem)))?;
+        .map_err(|rem| Err::Incomplete(Needed::new(mem::size_of::<T>() - rem.get())))?;
     Ok((empty, slice_t))
 }
 

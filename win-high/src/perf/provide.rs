@@ -33,7 +33,7 @@ pub trait PerfProvider {
             None,
             None,
         )?;
-        let first_counter = nom::number::complete::le_u32::<()>(&*buffer)
+        let first_counter = nom::number::complete::le_u32::<_, ()>(&*buffer)
             .map_err(|_| WinError::new(ERROR_INVALID_DATA))?
             .1;
 
