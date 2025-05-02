@@ -69,7 +69,7 @@ impl RandomJokeProvider {
     }
 
     pub fn fetch(&self) -> Result<String, Box<dyn Error>> {
-        const URL: &str = "http://api.icndb.com/jokes/random?limitTo=nerdy";
+        const URL: &str = "https://api.chucknorris.io/jokes/random?category=dev";
 
         let resp: serde_json::Value = reqwest::blocking::get(URL)?
             .json()?;
@@ -80,7 +80,6 @@ impl RandomJokeProvider {
 
     fn get_in(json: &serde_json::Value) -> Option<&str> {
         json.get("value")?
-            .get("joke")?
             .as_str()
     }
 }
