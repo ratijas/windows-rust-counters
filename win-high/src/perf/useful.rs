@@ -49,7 +49,7 @@ impl From<NumInstances> for i32 {
     fn from(this: NumInstances) -> Self {
         match this {
             NumInstances::NoInstances => PERF_NO_INSTANCES,
-            NumInstances::N(n) => n as _
+            NumInstances::N(n) => n as _,
         }
     }
 }
@@ -156,7 +156,9 @@ impl PartialOrd for InstanceId {
 impl Ord for InstanceId {
     fn cmp(&self, other: &Self) -> Ordering {
         self.partial_cmp(other).unwrap_or_else(|| {
-            self.unique_id().map(|_| Ordering::Greater).unwrap_or(Ordering::Less)
+            self.unique_id()
+                .map(|_| Ordering::Greater)
+                .unwrap_or(Ordering::Less)
         })
     }
 }
@@ -218,8 +220,14 @@ impl ObjectData {
         }
     }
 
-    pub fn get<'a>(&'a self, counter_id: CounterId, instance_id: InstanceId) -> Option<CounterVal<'a>> {
-        self.inner.get(&(counter_id, instance_id)).map(|owned| owned.borrow())
+    pub fn get<'a>(
+        &'a self,
+        counter_id: CounterId,
+        instance_id: InstanceId,
+    ) -> Option<CounterVal<'a>> {
+        self.inner
+            .get(&(counter_id, instance_id))
+            .map(|owned| owned.borrow())
     }
 
     pub fn set(&mut self, counter_id: CounterId, instance_id: InstanceId, value: CounterValue) {
@@ -235,7 +243,7 @@ pub struct SharedObjectData {
 impl SharedObjectData {
     pub fn new() -> Self {
         SharedObjectData {
-            inner: Arc::new(Mutex::new(ObjectData::new()))
+            inner: Arc::new(Mutex::new(ObjectData::new())),
         }
     }
 

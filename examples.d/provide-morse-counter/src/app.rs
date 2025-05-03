@@ -5,8 +5,8 @@ use std::sync::atomic::AtomicBool;
 use log::error;
 
 use morse_stream::*;
-use signal_flow::*;
 use signal_flow::rtsm::*;
+use signal_flow::*;
 use win_high::perf::useful::*;
 use win_high::perf::values::*;
 use win_high::prelude::v2::*;
@@ -66,14 +66,11 @@ impl App {
                 NumInstances::NoInstances => self.instances.push(InstanceId::perf_no_instances()),
                 NumInstances::N(n) => {
                     let width = n.to_string().len();
-                    self.instances.extend(
-                        (0..(n as usize))
-                            .map(|i| {
-                                let unique_id = i as i32;
-                                let name = Self::name_for_instance(i, width);
-                                InstanceId::new(unique_id, &name)
-                            })
-                    )
+                    self.instances.extend((0..(n as usize)).map(|i| {
+                        let unique_id = i as i32;
+                        let name = Self::name_for_instance(i, width);
+                        InstanceId::new(unique_id, &name)
+                    }))
                 }
             }
 
@@ -93,7 +90,9 @@ impl App {
                 Box::new(RandomJokeProvider::new()),
                 Box::new(get_reg_key_strings_provider()),
             ];
-            for (counter, strings_provider) in self.counters.clone().into_iter().zip(providers.into_iter()) {
+            for (counter, strings_provider) in
+                self.counters.clone().into_iter().zip(providers.into_iter())
+            {
                 let builder = WorkerBuilder::new(
                     self.shared_data.clone(),
                     counter,
@@ -135,8 +134,7 @@ impl WorkerBuilder {
         instances: Vec<InstanceId>,
         num_instances: NumInstances,
         strings_provider: Box<dyn StringsProvider + Send>,
-    ) -> Self
-    {
+    ) -> Self {
         WorkerBuilder {
             shared_data,
             counter,
@@ -147,7 +145,9 @@ impl WorkerBuilder {
     }
 
     pub fn build(self) -> WorkerThread<()> {
-        WorkerThread::spawn(move |cancellation_token: Arc<AtomicBool>| self.main(cancellation_token))
+        WorkerThread::spawn(move |cancellation_token: Arc<AtomicBool>| {
+            self.main(cancellation_token)
+        })
     }
 
     fn main(self, cancellation_token: Arc<AtomicBool>) {
@@ -181,7 +181,11 @@ impl WorkerBuilder {
                     let (coder, rx) = &mut rtsm_coders[i];
 
                     coder.send(signal).unwrap();
-                    let value = rx.recv().unwrap().ok_or("Unexpected None from one-to-one rx/tx pair").unwrap();
+                    let value = rx
+                        .recv()
+                        .unwrap()
+                        .ok_or("Unexpected None from one-to-one rx/tx pair")
+                        .unwrap();
 
                     let counter_value = CounterValue::Dword(value);
                     data.set(counter, instance.clone(), counter_value);
@@ -191,10 +195,10 @@ impl WorkerBuilder {
 
             Ok(())
         })
-            .cancel_on(cancellation_token)
-            .interval(get_tick_interval())
-            .chunks(instances.len())
-            .morse_encode::<ITU>();
+        .cancel_on(cancellation_token)
+        .interval(get_tick_interval())
+        .chunks(instances.len())
+        .morse_encode::<ITU>();
 
         'outer: loop {
             let string = strings_provider.provide();

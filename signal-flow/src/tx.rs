@@ -13,29 +13,35 @@ pub trait Tx {
     /// Blocking send value.
     fn send(&mut self, value: Self::Item) -> Result<(), Box<dyn Error>>;
 
-    fn interval(self, rate: Duration) -> Interval<Self, IntervalRoleTx> where Self: Sized {
+    fn interval(self, rate: Duration) -> Interval<Self, IntervalRoleTx>
+    where
+        Self: Sized,
+    {
         Interval::new(self, rate)
     }
 
     fn cancel_on(self, cancellation_token: Arc<AtomicBool>) -> CancellableTx<Self>
-        where Self: Sized
+    where
+        Self: Sized,
     {
         CancellableTx::new(cancellation_token, self)
     }
 
-    fn chunks<T>(self, chunk_size: usize) -> ChunksTx<Self, T> where Self: Sized {
+    fn chunks<T>(self, chunk_size: usize) -> ChunksTx<Self, T>
+    where
+        Self: Sized,
+    {
         ChunksTx::new(chunk_size, self)
     }
 }
-
 
 ////////////////////////////////////////////////
 //////////////////// Tx Ext ////////////////////
 ////////////////////////////////////////////////
 
-
 pub trait TxExt<Iter>: Tx
-    where Iter: IntoIterator<Item=Self::Item>,
+where
+    Iter: IntoIterator<Item = Self::Item>,
 {
     fn send_all(&mut self, values: Iter) -> Result<(), Box<dyn Error>> {
         for value in values.into_iter() {
@@ -46,16 +52,15 @@ pub trait TxExt<Iter>: Tx
 }
 
 impl<Iter, Item, Any: ?Sized> TxExt<Iter> for Any
-    where
-        Any: Tx<Item=Item>,
-        Iter: IntoIterator<Item=Item>,
-{}
-
+where
+    Any: Tx<Item = Item>,
+    Iter: IntoIterator<Item = Item>,
+{
+}
 
 //////////////////////////////////////////////////
 //////////////////// Interval ////////////////////
 //////////////////////////////////////////////////
-
 
 impl<T: Tx> Tx for Interval<T, IntervalRoleTx> {
     type Item = T::Item;
@@ -66,20 +71,18 @@ impl<T: Tx> Tx for Interval<T, IntervalRoleTx> {
     }
 }
 
-
 //////////////////////////////////////////////
 //////////////////// Null ////////////////////
 //////////////////////////////////////////////
 
-
 pub struct NullTx<T> {
-    _marker: PhantomData<T>
+    _marker: PhantomData<T>,
 }
 
 impl<T> NullTx<T> {
     pub fn new() -> Self {
         NullTx {
-            _marker: Default::default()
+            _marker: Default::default(),
         }
     }
 }
@@ -92,11 +95,9 @@ impl<T> Tx for NullTx<T> {
     }
 }
 
-
 /////////////////////////////////////////////
 //////////////////// Vec ////////////////////
 /////////////////////////////////////////////
-
 
 pub struct VecCollectorTx<'a, T> {
     buffer: &'a mut Vec<T>,
@@ -104,9 +105,7 @@ pub struct VecCollectorTx<'a, T> {
 
 impl<'a, T> VecCollectorTx<'a, T> {
     pub fn new(buffer: &'a mut Vec<T>) -> Self {
-        VecCollectorTx {
-            buffer
-        }
+        VecCollectorTx { buffer }
     }
 }
 
@@ -147,7 +146,10 @@ impl<X: Tx> Tx for CancellableTx<X> {
     type Item = X::Item;
 
     fn send(&mut self, value: Self::Item) -> Result<(), Box<dyn Error>> {
-        if self.cancellation_token.load(std::sync::atomic::Ordering::Relaxed) {
+        if self
+            .cancellation_token
+            .load(std::sync::atomic::Ordering::Relaxed)
+        {
             Err(Box::new(CancelledError))
         } else {
             self.tx.send(value)
@@ -171,14 +173,14 @@ impl std::error::Error for CancelledError {
 //////////////////// Custom ////////////////////
 ////////////////////////////////////////////////
 
-
 pub struct CustomTx<F, T> {
     handler: F,
     _marker: PhantomData<T>,
 }
 
 impl<F, T> CustomTx<F, T>
-    where F: FnMut(T) -> Result<(), Box<dyn Error>>
+where
+    F: FnMut(T) -> Result<(), Box<dyn Error>>,
 {
     pub fn new(handler: F) -> Self {
         CustomTx {
@@ -189,7 +191,8 @@ impl<F, T> CustomTx<F, T>
 }
 
 impl<F, T> Tx for CustomTx<F, T>
-    where F: FnMut(T) -> Result<(), Box<dyn Error>>
+where
+    F: FnMut(T) -> Result<(), Box<dyn Error>>,
 {
     type Item = T;
 
@@ -198,11 +201,10 @@ impl<F, T> Tx for CustomTx<F, T>
     }
 }
 
-
 pub struct ChunksTx<X, T> {
     tx: X,
     chunk_size: usize,
-    buffer: Vec<T>
+    buffer: Vec<T>,
 }
 
 impl<X, T> ChunksTx<X, T> {
@@ -223,7 +225,8 @@ impl<X, T> ChunksTx<X, T> {
 }
 
 impl<X, T> Tx for ChunksTx<X, T>
-    where X: Tx<Item=Vec<T>>
+where
+    X: Tx<Item = Vec<T>>,
 {
     type Item = T;
 

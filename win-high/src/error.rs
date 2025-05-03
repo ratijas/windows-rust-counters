@@ -14,7 +14,12 @@ pub struct WinError {
 }
 
 impl WinError {
-    fn _new(error_code: WIN32_ERROR, comment: Option<String>, message: Option<String>, source: Option<Box<WinError>>) -> Self {
+    fn _new(
+        error_code: WIN32_ERROR,
+        comment: Option<String>,
+        message: Option<String>,
+        source: Option<Box<WinError>>,
+    ) -> Self {
         WinError {
             error_code,
             comment,
@@ -47,7 +52,7 @@ impl WinError {
     pub fn with_message(&self) -> Self {
         match self.message.as_ref() {
             Some(_) => self.clone(),
-            None => self.clone_with_message()
+            None => self.clone_with_message(),
         }
     }
 
@@ -73,7 +78,12 @@ impl WinError {
             }
             Err(format_error) => {
                 let message = Self::get_format_message_error(self.error_code);
-                Self::_new(format_error, None, Some(message), Some(Box::new(self.clone())))
+                Self::_new(
+                    format_error,
+                    None,
+                    Some(message),
+                    Some(Box::new(self.clone())),
+                )
             }
         }
     }
@@ -96,12 +106,12 @@ impl WinError {
                 FORMAT_MESSAGE_IGNORE_INSERTS
                     | FORMAT_MESSAGE_FROM_SYSTEM
                     | FORMAT_MESSAGE_ALLOCATE_BUFFER, // dwFlags
-                None, // lpSource
-                error_code.0, // dwMessageId
+                None,                                                     // lpSource
+                error_code.0,                                             // dwMessageId
                 MAKELANGID(LANG_NEUTRAL as _, SUBLANG_DEFAULT as _) as _, // dwLanguageId
-                ::std::mem::transmute(&mut buffer as *mut PWSTR),  // lpBuffer
-                0, // nSize
-                None, // va_args
+                ::std::mem::transmute(&mut buffer as *mut PWSTR),         // lpBuffer
+                0,                                                        // nSize
+                None,                                                     // va_args
             );
 
             // If the function fails, the return value is zero. To get extended error information, call GetLastError.
@@ -119,7 +129,10 @@ impl WinError {
     }
 
     fn get_format_message_error(original_error_code: WIN32_ERROR) -> String {
-        format!("FormatMessageW failed while formatting error 0x{:08X}", original_error_code.0)
+        format!(
+            "FormatMessageW failed while formatting error 0x{:08X}",
+            original_error_code.0
+        )
     }
 
     const UNKNOWN_ERROR: &'static str = "UNKNOWN ERROR CODE";

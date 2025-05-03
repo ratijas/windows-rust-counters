@@ -3,9 +3,9 @@ use std::mem;
 use std::str::FromStr;
 
 use itertools::Itertools;
+use win_low::um::winnt::*;
 use windows::Win32::Globalization::*;
 use windows::Win32::System::SystemInformation::*;
-use win_low::um::winnt::*;
 
 use crate::prelude::v2::*;
 
@@ -29,15 +29,18 @@ pub fn get_language_id() -> WinResult</*LANGID*/ u16> {
     // Primary language identifier.
     let primary = PRIMARYLANGID(lang_id);
 
-    Ok(if (LANG_PORTUGUESE == primary as u32 && osvi.dwBuildNumber > 5) || // Windows Vista and later
-        (LANG_CHINESE == primary as u32 && (osvi.dwMajorVersion == 5 && osvi.dwMinorVersion >= 1)) // XP and Windows Server 2003
-    {
-        // Use the complete language identifier.
-        lang_id
-    } else {
-        // Use only primary
-        MAKELANGID(primary as u16, 0)
-    })
+    Ok(
+        if (LANG_PORTUGUESE == primary as u32 && osvi.dwBuildNumber > 5) || // Windows Vista and later
+        (LANG_CHINESE == primary as u32 && (osvi.dwMajorVersion == 5 && osvi.dwMinorVersion >= 1))
+        // XP and Windows Server 2003
+        {
+            // Use the complete language identifier.
+            lang_id
+        } else {
+            // Use only primary
+            MAKELANGID(primary as u16, 0)
+        },
+    )
 }
 
 #[derive(Clone, Debug)]
@@ -52,7 +55,7 @@ pub struct CounterMeta {
 
 pub struct AllCounters {
     // Key is the name index
-    table: BTreeMap<u32, CounterMeta>
+    table: BTreeMap<u32, CounterMeta>,
 }
 
 impl AllCounters {
@@ -114,7 +117,9 @@ impl UseLocale {
         match self {
             UseLocale::LangId(lang_id) =>
             // LANGID must formatted as hex value, 3 chars wide, padded with 0 on the left.
-                format!("{} {:03x}", query, lang_id),
+            {
+                format!("{} {:03x}", query, lang_id)
+            }
             _ => query.to_owned(),
         }
     }
@@ -149,7 +154,13 @@ pub fn get_counters_info(machine: Option<String>, locale: UseLocale) -> WinResul
     // length of Help text is supposedly much longer than the names.
     let buffer_size_hint = Some(4 * buffer_size);
     let query = locale.format_query("Help");
-    query_value_with_buffer(*text_hkey, query.as_str(), None, buffer_size_hint, &mut help_raw)?;
+    query_value_with_buffer(
+        *text_hkey,
+        query.as_str(),
+        None,
+        buffer_size_hint,
+        &mut help_raw,
+    )?;
 
     let pairs = parse_performance_text_pairs(help_raw.as_ref());
     for (index, value) in pairs {
@@ -180,10 +191,10 @@ fn parse_performance_text_pairs(raw: &[u8]) -> Vec<(u32, String)> {
 fn parse_null_separated_key_value_pairs<T: FromStr>(raw: &U16Str) -> Vec<(T, String)> {
     let mut vec = Vec::new();
 
-    for (index, value)
-    in crate::format::split_nul_delimited_double_nul_terminated(raw)
+    for (index, value) in crate::format::split_nul_delimited_double_nul_terminated(raw)
         .tuples::<(&U16CStr, &U16CStr)>()
-        .skip(1) // drop useless header with total count
+        .skip(1)
+    // drop useless header with total count
     {
         let index_parsed = match index
             .to_string()
@@ -192,14 +203,21 @@ fn parse_null_separated_key_value_pairs<T: FromStr>(raw: &U16Str) -> Vec<(T, Str
         {
             Ok(index) => index,
             Err(_) => {
-                println!("Error parsing index {} for value {}", index.to_string_lossy(), value.to_string_lossy());
+                println!(
+                    "Error parsing index {} for value {}",
+                    index.to_string_lossy(),
+                    value.to_string_lossy()
+                );
                 continue;
             }
         };
         let value = match value.to_string() {
             Ok(value) => value,
             Err(_) => {
-                println!("Error parsing UTF-16 value for index {}", index.to_string_lossy());
+                println!(
+                    "Error parsing UTF-16 value for index {}",
+                    index.to_string_lossy()
+                );
                 continue;
             }
         };

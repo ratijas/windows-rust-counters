@@ -12,23 +12,13 @@ pub fn query_value(
     value_name: &str,
     value_type: Option<&mut REG_VALUE_TYPE>,
     buffer_size_hint: Option<usize>,
-) -> WinResult<Vec<u8>>
-{
+) -> WinResult<Vec<u8>> {
     let mut buffer = Vec::new();
-    query_value_with_buffer(
-        hkey,
-        value_name,
-        value_type,
-        buffer_size_hint,
-        &mut buffer,
-    )?;
+    query_value_with_buffer(hkey, value_name, value_type, buffer_size_hint, &mut buffer)?;
     Ok(buffer)
 }
 
-pub fn query_value_dword(
-    hkey: HKEY,
-    value_name: &str,
-) -> WinResult<u32> {
+pub fn query_value_dword(hkey: HKEY, value_name: &str) -> WinResult<u32> {
     let mut value_type = REG_NONE;
     let buffer = query_value(
         hkey,
@@ -37,14 +27,17 @@ pub fn query_value_dword(
         Some(size_of::<u32>()),
     )?;
     if value_type != REG_DWORD {
-        return Err(WinError::new(ERROR_INVALID_DATA)
-            .with_comment(format!(
-                "Unexpected data type in registry. Expected DWORD, got: {:#10x}", value_type.0)));
+        return Err(WinError::new(ERROR_INVALID_DATA).with_comment(format!(
+            "Unexpected data type in registry. Expected DWORD, got: {:#10x}",
+            value_type.0
+        )));
     }
     if buffer.len() != size_of::<u32>() {
-        return Err(WinError::new(ERROR_INVALID_DATA)
-            .with_comment(format!(
-                "Unexpected buffer size for type DWORD. Expected: {}, got: {}", size_of::<u32>(), buffer.len())));
+        return Err(WinError::new(ERROR_INVALID_DATA).with_comment(format!(
+            "Unexpected buffer size for type DWORD. Expected: {}, got: {}",
+            size_of::<u32>(),
+            buffer.len()
+        )));
     }
     let num = {
         let mut bytes = [0; size_of::<u32>()];
@@ -64,8 +57,7 @@ pub fn query_value_with_buffer(
     value_type: Option<&mut REG_VALUE_TYPE>,
     buffer_size_hint: Option<usize>,
     buffer: &mut Vec<u8>,
-) -> WinResult<()>
-{
+) -> WinResult<()> {
     // prepare value name with trailing NULL char
     let wsz_value_name = U16CString::from_str(value_name).unwrap();
     let pcwstr_value_name = PCWSTR(wsz_value_name.as_ptr());
@@ -118,12 +110,18 @@ pub fn query_value_with_buffer(
 
         while error_code == ERROR_MORE_DATA {
             // initialize buffer size or double its value
-            let increment = if buffer_size == 0 { INITIAL_BUFFER_SIZE } else { buffer_size };
+            let increment = if buffer_size == 0 {
+                INITIAL_BUFFER_SIZE
+            } else {
+                buffer_size
+            };
             buffer_size += increment;
             buffer_size_out = buffer_size as u32;
             if buffer_size > MAX_BUFFER_SIZE {
-                return Err(WinError::new(ERROR_MORE_DATA)
-                    .with_comment(format!("RegQueryValueExW reached buffer limit: {} bytes", buffer_size)));
+                return Err(WinError::new(ERROR_MORE_DATA).with_comment(format!(
+                    "RegQueryValueExW reached buffer limit: {} bytes",
+                    buffer_size
+                )));
             }
             // buffer considers itself empty, so reversing for "additional" N items is the same as
             // reserving for total of N items.
@@ -158,11 +156,13 @@ pub fn query_value_with_buffer(
 /// it certainly can NOT be used under these conditions:
 /// - HKEY is HKEY_PERFORMANCE_DATA but
 /// - value_name is not starting with either "Counter" or "Help".
-fn try_get_size_hint(hkey: HKEY, value_name: &str, pcwstr_value_name: PCWSTR) -> WinResult<Option<u32>> {
-    let can_not_use_reg_size_hint =
-        (hkey == HKEY_PERFORMANCE_DATA)
-            && (!value_name.starts_with("Counter")
-            && !value_name.starts_with("Help"));
+fn try_get_size_hint(
+    hkey: HKEY,
+    value_name: &str,
+    pcwstr_value_name: PCWSTR,
+) -> WinResult<Option<u32>> {
+    let can_not_use_reg_size_hint = (hkey == HKEY_PERFORMANCE_DATA)
+        && (!value_name.starts_with("Counter") && !value_name.starts_with("Help"));
 
     if can_not_use_reg_size_hint {
         return Ok(None);
@@ -184,7 +184,9 @@ fn try_get_size_hint(hkey: HKEY, value_name: &str, pcwstr_value_name: PCWSTR) ->
     if error_code != ERROR_SUCCESS {
         return Err(WinError::new_with_message(error_code).with_comment(format!(
             "Getting buffer size hint for registry value failed. \
-            This should not happen for HKEY = {:p}, ValueName = {:?}", hkey.0, value_name)));
+            This should not happen for HKEY = {:p}, ValueName = {:?}",
+            hkey.0, value_name
+        )));
     }
 
     Ok(Some(reg_size_hint))

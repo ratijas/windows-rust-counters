@@ -19,9 +19,8 @@ mod ascii {
     pub const ASCII_ON: char = '-';
     pub const ASCII_OFF: char = ' ';
 
-
     pub struct SignalToAsciiTx<X> {
-        inner: X
+        inner: X,
     }
 
     impl<X> SignalToAsciiTx<X> {
@@ -30,22 +29,17 @@ mod ascii {
         }
 
         pub fn encode(&self, state: Signal) -> char {
-            if state {
-                ASCII_ON
-            } else {
-                ASCII_OFF
-            }
+            if state { ASCII_ON } else { ASCII_OFF }
         }
     }
 
-    impl<X: Tx<Item=char>> Tx for SignalToAsciiTx<X> {
+    impl<X: Tx<Item = char>> Tx for SignalToAsciiTx<X> {
         type Item = Signal;
 
         fn send(&mut self, value: Self::Item) -> Result<(), Box<dyn Error>> {
             self.inner.send(self.encode(value))
         }
     }
-
 
     pub struct SignalFromAsciiRx<X> {
         inner: X,
@@ -67,7 +61,7 @@ mod ascii {
         }
     }
 
-    impl<X: Rx<Item=char>> Rx for SignalFromAsciiRx<X> {
+    impl<X: Rx<Item = char>> Rx for SignalFromAsciiRx<X> {
         type Item = Signal;
 
         fn recv(&mut self) -> Result<Option<Self::Item>, Box<dyn Error>> {
@@ -76,21 +70,23 @@ mod ascii {
                     None => return Ok(None),
                     Some(char) => match self.decode(char) {
                         None => { /* loop */ }
-                        Some(state) => return Ok(Some(state))
-                    }
+                        Some(state) => return Ok(Some(state)),
+                    },
                 }
             }
         }
     }
 
-
-    pub trait AsciiRxExt where Self: Sized {
+    pub trait AsciiRxExt
+    where
+        Self: Sized,
+    {
         fn signal_from_ascii(self) -> SignalFromAsciiRx<Self> {
             SignalFromAsciiRx::new(self)
         }
     }
 
-    impl<X> AsciiRxExt for X where X: Rx<Item=char> {}
+    impl<X> AsciiRxExt for X where X: Rx<Item = char> {}
 }
 
 fn main() {
@@ -103,17 +99,14 @@ fn main() {
 
     match role {
         Role::Encoder => {
-            let mut encoder = EncoderTx::<ITU, _>::new(
-                SignalToAsciiTx::new(
-                    CustomTx::new(|char| {
-                        let stdout = std::io::stdout();
-                        let mut handle = stdout.lock();
-                        handle.write_all(&[char as u8])?;
-                        handle.flush()?;
-                        Ok(())
-                    })
-                )
-            );
+            let mut encoder =
+                EncoderTx::<ITU, _>::new(SignalToAsciiTx::new(CustomTx::new(|char| {
+                    let stdout = std::io::stdout();
+                    let mut handle = stdout.lock();
+                    handle.write_all(&[char as u8])?;
+                    handle.flush()?;
+                    Ok(())
+                })));
             // Text in, Morse as ASCII out
             for byte in std::io::stdin().bytes() {
                 // Assume single-byte ASCII input
@@ -126,22 +119,26 @@ fn main() {
             let h_stdin = stdin.lock();
             println!("locked stdin");
             let mut decoder = IteratorRx::from(
-                h_stdin.bytes().map(|r| r.expect("read byte from stdin") as char)
+                h_stdin
+                    .bytes()
+                    .map(|r| r.expect("read byte from stdin") as char),
             )
-                .signal_from_ascii()
-                .morse_decode::<ITU>();
+            .signal_from_ascii()
+            .morse_decode::<ITU>();
             loop {
                 match decoder.recv() {
                     Ok(Some(char)) => {
                         let stdout = io::stdout();
                         let mut handle = stdout.lock();
-                        handle.write_all(&[char as u8]).expect("write decoded character");
+                        handle
+                            .write_all(&[char as u8])
+                            .expect("write decoded character");
                         handle.flush().expect("flush");
-                    },
+                    }
                     Ok(None) => {
                         println!("Ok(None)");
-                        break
-                    },
+                        break;
+                    }
                     Err(e) => println!("Decode error: {}", e),
                 }
             }

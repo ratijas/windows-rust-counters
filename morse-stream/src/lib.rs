@@ -84,7 +84,8 @@ pub trait Dialect: Clone + Debug + Default {
     /// Provide encoding for given letter, if any. Spaces should not be recognized, and must be dealt with elsewhere.
     fn encode_char(&self, char: char) -> Option<KnownCodePoints> {
         let upper = char.to_uppercase().next().unwrap();
-        self.table().iter()
+        self.table()
+            .iter()
             .find(|(ch, _)| *ch == upper || *ch == char)
             .map(|(_, code)| *code)
     }
@@ -97,12 +98,13 @@ pub trait Dialect: Clone + Debug + Default {
         assert!(!seq.is_empty());
         assert!(seq.iter().all(|&code| code == Dot || code == Dash));
 
-        self.table().iter()
+        self.table()
+            .iter()
             .find(|(_, encoding)| *encoding == seq)
             .map(|(char, _)| *char)
     }
 
-    fn encoder<X: Tx<Item=Signal>>(tx: X) -> EncoderTx<Self, X> {
+    fn encoder<X: Tx<Item = Signal>>(tx: X) -> EncoderTx<Self, X> {
         EncoderTx::new(tx)
     }
 }
@@ -152,21 +154,21 @@ impl ITU {
         ('0', &[OOOOOO, OOOOOO, OOOOOO, OOOOOO, OOOOOO]),
         ('0', &[OOOOOO]), // 0 (alt)
         // Punctuation
-        ('.', &[II, OOOOOO, II, OOOOOO, II, OOOOOO]),      // Period [.]
-        (',', &[OOOOOO, OOOOOO, II, II, OOOOOO, OOOOOO]),  // Comma [,]
-        ('?', &[II, II, OOOOOO, OOOOOO, II, II]),          // Question Mark [?]
+        ('.', &[II, OOOOOO, II, OOOOOO, II, OOOOOO]), // Period [.]
+        (',', &[OOOOOO, OOOOOO, II, II, OOOOOO, OOOOOO]), // Comma [,]
+        ('?', &[II, II, OOOOOO, OOOOOO, II, II]),     // Question Mark [?]
         ('\'', &[II, OOOOOO, OOOOOO, OOOOOO, OOOOOO, II]), // Apostrophe [']
-        ('!', &[OOOOOO, II, OOOOOO, II, OOOOOO, OOOOOO]),  // Exclamation Point [!]; [KW] digraph
-        ('/', &[OOOOOO, II, II, OOOOOO, II]),              // Slash/Fraction Bar [/]
-        ('(', &[OOOOOO, II, OOOOOO, OOOOOO, II]),          // Parenthesis (Open)
-        (')', &[OOOOOO, II, OOOOOO, OOOOOO, II, OOOOOO]),  // Parenthesis (Close)
-        ('&', &[II, OOOOOO, II, II, II]),                  // Ampersand (or "Wait") [&]; [AS] digraph
-        (':', &[OOOOOO, OOOOOO, OOOOOO, II, II, II]),      // Colon [:]
-        ('=', &[OOOOOO, II, II, II, OOOOOO]),              // Double Dash [=]
-        ('+', &[II, OOOOOO, II, OOOOOO, II]),              // Plus sign [+]
-        ('-', &[OOOOOO, II, II, II, II, OOOOOO]),          // Hyphen, Minus Sign [-]
-        ('"', &[II, OOOOOO, II, II, OOOOOO, II]),          // Quotation mark ["]
-        ('@', &[II, OOOOOO, OOOOOO, II, OOOOOO, II]),      // At Sign [@]; [AC] digraph
+        ('!', &[OOOOOO, II, OOOOOO, II, OOOOOO, OOOOOO]), // Exclamation Point [!]; [KW] digraph
+        ('/', &[OOOOOO, II, II, OOOOOO, II]),         // Slash/Fraction Bar [/]
+        ('(', &[OOOOOO, II, OOOOOO, OOOOOO, II]),     // Parenthesis (Open)
+        (')', &[OOOOOO, II, OOOOOO, OOOOOO, II, OOOOOO]), // Parenthesis (Close)
+        ('&', &[II, OOOOOO, II, II, II]),             // Ampersand (or "Wait") [&]; [AS] digraph
+        (':', &[OOOOOO, OOOOOO, OOOOOO, II, II, II]), // Colon [:]
+        ('=', &[OOOOOO, II, II, II, OOOOOO]),         // Double Dash [=]
+        ('+', &[II, OOOOOO, II, OOOOOO, II]),         // Plus sign [+]
+        ('-', &[OOOOOO, II, II, II, II, OOOOOO]),     // Hyphen, Minus Sign [-]
+        ('"', &[II, OOOOOO, II, II, OOOOOO, II]),     // Quotation mark ["]
+        ('@', &[II, OOOOOO, OOOOOO, II, OOOOOO, II]), // At Sign [@]; [AC] digraph
     ];
     const EMPTY: KnownCodePoints = &[];
 }
@@ -181,11 +183,9 @@ impl Dialect for ITU {
     }
 }
 
-
 ///////////////////////////////////////////////
 /////////////////// Encoder ///////////////////
 ///////////////////////////////////////////////
-
 
 pub struct EncoderTx<D, X> {
     dialect: D,
@@ -196,7 +196,7 @@ pub struct EncoderTx<D, X> {
     pause_written: u8,
 }
 
-impl<D: Dialect, X: Tx<Item=Signal>> EncoderTx<D, X> {
+impl<D: Dialect, X: Tx<Item = Signal>> EncoderTx<D, X> {
     pub fn new(tx: X) -> Self {
         EncoderTx {
             dialect: Default::default(),
@@ -265,7 +265,7 @@ impl<D: Dialect, X: Tx<Item=Signal>> EncoderTx<D, X> {
                 .iter()
                 .cloned()
                 .flat_map(CodePoint::encode)
-                .cloned()
+                .cloned(),
         )?;
 
         Ok(())
@@ -302,14 +302,13 @@ impl<D: Dialect> EncoderTx<D, ()> {
     }
 }
 
-impl<D: Dialect, X: Tx<Item=Signal>> Tx for EncoderTx<D, X> {
+impl<D: Dialect, X: Tx<Item = Signal>> Tx for EncoderTx<D, X> {
     type Item = char;
 
     fn send(&mut self, value: Self::Item) -> Result<(), Box<dyn Error>> {
         self.send_char(value)
     }
 }
-
 
 ///////////////////////////////////////////////
 ///////////////////  Error  ///////////////////
@@ -318,25 +317,17 @@ impl<D: Dialect, X: Tx<Item=Signal>> Tx for EncoderTx<D, X> {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum MorseDecodeError {
     /// Failed to decode raw 0s and 1s into dots and dashes.
-    Signal {
-        signal: Vec<Signal>,
-    },
+    Signal { signal: Vec<Signal> },
     /// Failed to decode dots and dashed as a letter.
-    Letter {
-        code_points: Vec<CodePoint>,
-    },
+    Letter { code_points: Vec<CodePoint> },
 }
 
 impl MorseDecodeError {
     pub fn from_signal(signal: Vec<Signal>) -> Self {
-        MorseDecodeError::Signal {
-            signal
-        }
+        MorseDecodeError::Signal { signal }
     }
     pub fn from_letter(code_points: Vec<CodePoint>) -> Self {
-        MorseDecodeError::Letter {
-            code_points
-        }
+        MorseDecodeError::Letter { code_points }
     }
 }
 
@@ -348,11 +339,9 @@ impl fmt::Display for MorseDecodeError {
     }
 }
 
-
 ///////////////////////////////////////////////
 /////////////////// Decoder ///////////////////
 ///////////////////////////////////////////////
-
 
 /// Current value of the signal and duration for how long the signal has been maintaining this
 /// same value.
@@ -409,14 +398,14 @@ impl SignalGroup {
             ON => match self.duration.get() {
                 1 => Some(Dot),
                 3 => Some(Dash),
-                _ => None
+                _ => None,
             },
             OFF => match self.duration.get() {
                 w if w >= 7 => Some(WordPause),
                 l if l >= 3 && l < 7 => Some(LetterPause),
                 s if s >= 1 && s < 3 => Some(SymbolPause),
-                _ => None
-            }
+                _ => None,
+            },
         }
     }
 }
@@ -437,7 +426,9 @@ pub struct DecoderRx<D, X> {
 }
 
 impl<D, X> DecoderRx<D, X>
-    where D: Dialect, X: Rx<Item=Signal>
+where
+    D: Dialect,
+    X: Rx<Item = Signal>,
 {
     pub fn new(inner: X) -> Self {
         DecoderRx {
@@ -464,7 +455,7 @@ impl<D, X> DecoderRx<D, X>
     fn boxed_error_from_group(group: Option<SignalGroup>) -> Box<dyn Error> {
         let signal = match group {
             Some(SignalGroup { state, duration }) => vec![state; duration.get() as usize],
-            None => vec![]
+            None => vec![],
         };
 
         Box::new(MorseDecodeError::from_signal(signal))
@@ -496,10 +487,12 @@ impl<D, X> DecoderRx<D, X>
     ///         - For `ON` state, duration must be between 1 and 3 inclusive.
     ///         - For `OFF` state, duration can be any (non-zero value).
     ///     * Return None
-    fn read_signal_unit_and_update_current_group(&mut self) -> Result<Option<SignalGroup>, Box<dyn Error>> {
+    fn read_signal_unit_and_update_current_group(
+        &mut self,
+    ) -> Result<Option<SignalGroup>, Box<dyn Error>> {
         match self.inner.recv()? {
             None => return Ok(self.reset_group()),
-            Some(signal) => self.add_signal_unit(signal)
+            Some(signal) => self.add_signal_unit(signal),
         }
     }
 
@@ -546,7 +539,8 @@ impl<D, X> DecoderRx<D, X>
         loop {
             if let Some(group) = self.read_signal_unit_and_update_current_group()? {
                 if group.state == ON {
-                    let code_point = group.to_code_point()
+                    let code_point = group
+                        .to_code_point()
                         .ok_or_else(|| Self::boxed_error_from_group(Some(group)))?;
 
                     self.add_symbol_to_letter(code_point);
@@ -557,7 +551,10 @@ impl<D, X> DecoderRx<D, X>
             } else {
                 // Use current group instead of finished one for processing OFFs.
                 match self.current_group {
-                    Some(SignalGroup { state: OFF, duration }) => {
+                    Some(SignalGroup {
+                        state: OFF,
+                        duration,
+                    }) => {
                         if duration.get() == 7 {
                             // emit whitespace
                             return Ok(Some(' '));
@@ -579,7 +576,7 @@ impl<D, X> DecoderRx<D, X>
     }
 }
 
-impl<D: Dialect, X: Rx<Item=Signal>> Rx for DecoderRx<D, X> {
+impl<D: Dialect, X: Rx<Item = Signal>> Rx for DecoderRx<D, X> {
     type Item = char;
 
     fn recv(&mut self) -> Result<Option<Self::Item>, Box<dyn Error>> {
@@ -587,25 +584,26 @@ impl<D: Dialect, X: Rx<Item=Signal>> Rx for DecoderRx<D, X> {
     }
 }
 
-
 ///////////////////////////////////////////////
 ////////////////// Tx/Rx Ext //////////////////
 ///////////////////////////////////////////////
 
-pub trait MorseTxExt: Tx<Item=Signal> {
+pub trait MorseTxExt: Tx<Item = Signal> {
     fn morse_encode<D: Dialect>(self) -> EncoderTx<D, Self>
-        where Self: Sized
+    where
+        Self: Sized,
     {
         EncoderTx::new(self)
     }
 }
 
-impl<X: Tx<Item=Signal>> MorseTxExt for X {}
+impl<X: Tx<Item = Signal>> MorseTxExt for X {}
 
 pub trait MorseRxExt {
     fn morse_decode<D: Dialect>(self) -> DecoderRx<D, Self>
-        where Self: Rx<Item=Signal> + Sized,
-              DecoderRx<D, Self>: Sized
+    where
+        Self: Rx<Item = Signal> + Sized,
+        DecoderRx<D, Self>: Sized,
     {
         DecoderRx::<D, Self>::new(self)
     }
@@ -613,8 +611,7 @@ pub trait MorseRxExt {
 
 impl<X: Rx> MorseRxExt for X {}
 
-
-pub fn print<I: IntoIterator<Item=Signal>>(sequence: I) {
+pub fn print<I: IntoIterator<Item = Signal>>(sequence: I) {
     for c in sequence.into_iter() {
         print!("{}", if c { '*' } else { ' ' });
     }
@@ -634,7 +631,6 @@ mod test {
         OFF, OFF, OFF, // end of message
     ];
 
-
     const A_B: &'static [Signal] = &[
         ON, OFF, ON, ON, ON, // A: · −
         OFF, OFF, OFF, OFF, OFF, OFF, OFF, // word space
@@ -647,14 +643,17 @@ mod test {
         let mut buffer = Vec::new();
         ITU::encoder(VecCollectorTx::new(&mut buffer));
 
-        assert_eq!(EncoderTx::<ITU, _>::encode_str("SOS"), vec![
-            ON, OFF, ON, OFF, ON, // S: · · ·
-            OFF, OFF, OFF, // letter space
-            ON, ON, ON, OFF, ON, ON, ON, OFF, ON, ON, ON, // O: − − −
-            OFF, OFF, OFF, // letter space
-            ON, OFF, ON, OFF, ON, // S: · · ·
-            OFF, OFF, OFF, // end of message
-        ]);
+        assert_eq!(
+            EncoderTx::<ITU, _>::encode_str("SOS"),
+            vec![
+                ON, OFF, ON, OFF, ON, // S: · · ·
+                OFF, OFF, OFF, // letter space
+                ON, ON, ON, OFF, ON, ON, ON, OFF, ON, ON, ON, // O: − − −
+                OFF, OFF, OFF, // letter space
+                ON, OFF, ON, OFF, ON, // S: · · ·
+                OFF, OFF, OFF, // end of message
+            ]
+        );
     }
 
     #[test]
@@ -685,7 +684,11 @@ mod test {
         let mut coder = DecoderRx::<ITU, _>::new(IteratorRx::from(signal.clone()));
         let result = coder.recv();
         assert!(result.is_err());
-        let err = *(result.err().unwrap().downcast::<MorseDecodeError>().unwrap());
+        let err = *(result
+            .err()
+            .unwrap()
+            .downcast::<MorseDecodeError>()
+            .unwrap());
         assert_eq!(err, MorseDecodeError::from_signal(signal));
     }
 }

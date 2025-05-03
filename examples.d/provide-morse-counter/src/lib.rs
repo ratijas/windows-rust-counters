@@ -61,15 +61,8 @@ extern "system" fn MyCollectProc(
     lpNumObjectTypes: *mut u32,
 ) -> u32 {
     // panics across FFI boundary is UB, hence must handle any errors here
-    match collect(
-        lpValueName,
-        lppData,
-        lpcbTotalBytes,
-        lpNumObjectTypes,
-    ) {
-        Ok(_) => {
-            ERROR_SUCCESS.0
-        }
+    match collect(lpValueName, lppData, lpcbTotalBytes, lpNumObjectTypes) {
+        Ok(_) => ERROR_SUCCESS.0,
         Err(error) => {
             if error.error_code() != ERROR_MORE_DATA {
                 error!("Error while collecting data: {:?}", error.with_message());
@@ -91,16 +84,24 @@ fn collect(
 ) -> WinResult<()> {
     unsafe {
         let query = U16CStr::from_ptr_str(lpValueName.0).to_string_lossy();
-        let query_type = QueryType::from_str(&query).map_err(|_| WinError::new(ERROR_BAD_ARGUMENTS))?;
+        let query_type =
+            QueryType::from_str(&query).map_err(|_| WinError::new(ERROR_BAD_ARGUMENTS))?;
 
         info!("query is: {:?}", query_type);
 
-        let buffer = std::slice::from_raw_parts_mut(lppData.cast::<*mut u8>().read() as *mut u8, lpcbTotalBytes.read() as usize);
+        let buffer = std::slice::from_raw_parts_mut(
+            lppData.cast::<*mut u8>().read() as *mut u8,
+            lpcbTotalBytes.read() as usize,
+        );
 
-        let mut p = PROVIDER.lock().map_err(|_| WinError::new(ERROR_LOCK_FAILED))?;
+        let mut p = PROVIDER
+            .lock()
+            .map_err(|_| WinError::new(ERROR_LOCK_FAILED))?;
         let collected: Collected = p.collect(query_type, buffer)?;
 
-        lppData.cast::<*mut u8>().write(buffer.as_mut_ptr().add(collected.total_bytes));
+        lppData
+            .cast::<*mut u8>()
+            .write(buffer.as_mut_ptr().add(collected.total_bytes));
         lpcbTotalBytes.write(collected.total_bytes as _);
         lpNumObjectTypes.write(collected.num_object_types as _);
     }
@@ -121,9 +122,7 @@ lazy_static! {
     pub static ref DATA: SharedObjectData = SharedObjectData::new();
     pub static ref APP: Arc<Mutex<App>> = Arc::new(Mutex::new(App::new(DATA.clone())));
     pub static ref PROVIDER: Mutex<MorseCountersProvider> =
-        Mutex::new(
-            MorseCountersProvider::new(
-                APP.clone(), DATA.clone()));
+        Mutex::new(MorseCountersProvider::new(APP.clone(), DATA.clone()));
 }
 
 fn start_global_workers() -> Result<(), ()> {

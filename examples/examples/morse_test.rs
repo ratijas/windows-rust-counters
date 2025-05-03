@@ -18,13 +18,12 @@ fn main() {
         OFF, OFF, OFF, // letter pause
         ON, ON, ON, OFF, ON, ON, ON, OFF, ON, ON, ON, // O
         OFF, OFF, OFF, // letter pause
-        ON, OFF, ON, OFF, ON // S
+        ON, OFF, ON, OFF, ON, // S
     ];
     let text = IteratorRx::from(signal.iter().cloned())
         .morse_decode::<ITU>()
         .collect::<Vec<_>>();
     println!("{:?}", text);
-
 
     let mut rx = CounterRx::new().interval(Duration::from_millis(1000));
 

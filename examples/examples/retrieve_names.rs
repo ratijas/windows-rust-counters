@@ -1,5 +1,5 @@
-use win_high::prelude::v2::*;
 use win_high::perf::consume::*;
+use win_high::prelude::v2::*;
 use win_low::um::winnt::MAKELANGID;
 
 fn main() {
@@ -31,7 +31,11 @@ fn do_local_counters(locale: UseLocale, limit: Option<usize>) {
 }
 
 fn print_counters(table: &AllCounters, limit: Option<usize>) {
-    for counter in table.map().values().take(limit.unwrap_or(table.map().len())) {
+    for counter in table
+        .map()
+        .values()
+        .take(limit.unwrap_or(table.map().len()))
+    {
         println!("[{}]: Name = {}", counter.name_index, counter.name_value);
         println!("[{}]: Help = {}", counter.help_index, counter.help_value);
         println!();

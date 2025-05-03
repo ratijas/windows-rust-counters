@@ -8,15 +8,14 @@ pub struct WorkerThread<T> {
 }
 
 impl<T> WorkerThread<T>
-    where T: Send + 'static
+where
+    T: Send + 'static,
 {
     /// Spawn new worker with new cancellation token.
     pub fn spawn(f: impl FnOnce(Arc<AtomicBool>) -> T + Send + 'static) -> Self {
         let cancellation_token = Arc::new(AtomicBool::new(false));
         let token_clone = Arc::clone(&cancellation_token);
-        let thread = std::thread::spawn(move || {
-            f(token_clone)
-        });
+        let thread = std::thread::spawn(move || f(token_clone));
         WorkerThread {
             thread,
             cancellation_token,
@@ -25,7 +24,8 @@ impl<T> WorkerThread<T>
 
     /// Cancel the worker by setting cancellation token to true.
     pub fn cancel(&self) {
-        self.cancellation_token.store(true, std::sync::atomic::Ordering::Relaxed);
+        self.cancellation_token
+            .store(true, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// Cancel the worker and blocking wait for it to finish.

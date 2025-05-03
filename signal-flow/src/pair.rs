@@ -1,9 +1,9 @@
 //! Tx to Rx adapter built on top of `std::mpsc`.
-use crate::tx::*;
 use crate::rx::*;
+use crate::tx::*;
 
-use std::sync::mpsc::{channel, Sender, Receiver};
 use std::error::Error;
+use std::sync::mpsc::{Receiver, Sender, channel};
 
 pub struct SenderTx<T> {
     sender: Sender<T>,
@@ -35,7 +35,7 @@ impl<T> Rx for ReceiverRx<T> {
     fn recv(&mut self) -> Result<Option<Self::Item>, Box<dyn Error>> {
         match self.receiver.recv() {
             Ok(value) => Ok(Some(value)),
-            Err(_) => Ok(None)
+            Err(_) => Ok(None),
         }
     }
 }

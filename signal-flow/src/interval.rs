@@ -39,7 +39,6 @@ mod private {
     impl Sealed for IntervalRoleRx {}
 }
 
-
 impl<X, R: IntervalRole> Interval<X, R> {
     pub fn new(inner: X, rate: Duration) -> Self {
         Interval {

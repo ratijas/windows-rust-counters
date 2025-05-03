@@ -58,13 +58,13 @@ impl PerfProvider for MorseCountersProvider {
         &*self.counters
     }
 
-    fn instances<'a>(&'a self, for_object: &PerfObjectTypeTemplate) -> Option<Vec<PerfInstanceDefinitionTemplate<'a>>> {
+    fn instances<'a>(
+        &'a self,
+        for_object: &PerfObjectTypeTemplate,
+    ) -> Option<Vec<PerfInstanceDefinitionTemplate<'a>>> {
         match self.num_instances {
             NumInstances::NoInstances => None,
-            NumInstances::N(_) => Some(
-                self.instances.iter()
-                    .map(Into::into)
-                    .collect()),
+            NumInstances::N(_) => Some(self.instances.iter().map(Into::into).collect()),
         }
     }
 
@@ -81,8 +81,14 @@ impl PerfProvider for MorseCountersProvider {
             None => InstanceId::perf_no_instances(),
         };
 
-        let data = self.cache.get(counter, instance).unwrap_or(CounterVal::Dword(0));
-        info!("get data: object name #{}, counter name #{} => {:?}", for_object.name_offset, per_counter.name_offset, data);
+        let data = self
+            .cache
+            .get(counter, instance)
+            .unwrap_or(CounterVal::Dword(0));
+        info!(
+            "get data: object name #{}, counter name #{} => {:?}",
+            for_object.name_offset, per_counter.name_offset, data
+        );
         data
     }
 

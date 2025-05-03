@@ -4,14 +4,14 @@ extern crate lazy_static;
 
 use std::error::Error;
 use std::iter;
-use std::sync::{Arc, Mutex};
 use std::sync::atomic::AtomicBool;
+use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
 use morse_stream::*;
-use signal_flow::*;
 use signal_flow::rtsm::*;
+use signal_flow::*;
 
 pub struct WorkerThread<T> {
     thread: JoinHandle<T>,
@@ -19,15 +19,14 @@ pub struct WorkerThread<T> {
 }
 
 impl<T> WorkerThread<T>
-    where T: Send + 'static
+where
+    T: Send + 'static,
 {
     /// Spawn new worker with new cancellation token.
     pub fn spawn(f: impl FnOnce(Arc<AtomicBool>) -> T + Send + 'static) -> Self {
         let cancellation_token = Arc::new(AtomicBool::new(false));
         let token_clone = Arc::clone(&cancellation_token);
-        let thread = std::thread::spawn(move || {
-            f(token_clone)
-        });
+        let thread = std::thread::spawn(move || f(token_clone));
         WorkerThread {
             thread,
             cancellation_token,
@@ -36,7 +35,8 @@ impl<T> WorkerThread<T>
 
     /// Cancel the worker by setting cancellation token to true.
     pub fn cancel(&self) {
-        self.cancellation_token.store(true, std::sync::atomic::Ordering::Relaxed);
+        self.cancellation_token
+            .store(true, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// Cancel the worker and blocking wait for it to finish.
@@ -58,10 +58,10 @@ fn worker_thread_main(cancellation_token: Arc<AtomicBool>) {
         *current = value;
         Ok(())
     })
-        .cancel_on(cancellation_token)
-        .interval(Duration::from_millis(500))
-        .rtsm(RtsmRanges::new(10..40, 60..90).unwrap())
-        .morse_encode::<ITU>();
+    .cancel_on(cancellation_token)
+    .interval(Duration::from_millis(500))
+    .rtsm(RtsmRanges::new(10..40, 60..90).unwrap())
+    .morse_encode::<ITU>();
 
     for char in iter::repeat(MESSAGE).map(str::chars).flatten() {
         println!("Encoding: {}", char);

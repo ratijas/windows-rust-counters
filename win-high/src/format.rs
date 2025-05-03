@@ -12,20 +12,26 @@ use crate::prelude::v2::*;
 ///
 /// This function panics if `p` is null.
 pub unsafe fn split_nul_delimited_double_nul_terminated_ptr<'a>(
-    p: *const u16
-) -> NullDelimitedDoubleNullTerminated<'a> { unsafe {
-    assert!(!p.is_null());
-    // if buffer consists only of double-nul sequence, move `current` straight to its end.
-    let current = if is_double_null_terminator(p) { p.add(1) } else { p };
-    // ensure there's an end to this buffer pointed by p.
-    // also, move to the second (and the last) nul character of the double-nul terminator.
-    let end = find_double_null_terminator(p).add(1);
-    NullDelimitedDoubleNullTerminated {
-        current,
-        end,
-        _marker: PhantomData,
+    p: *const u16,
+) -> NullDelimitedDoubleNullTerminated<'a> {
+    unsafe {
+        assert!(!p.is_null());
+        // if buffer consists only of double-nul sequence, move `current` straight to its end.
+        let current = if is_double_null_terminator(p) {
+            p.add(1)
+        } else {
+            p
+        };
+        // ensure there's an end to this buffer pointed by p.
+        // also, move to the second (and the last) nul character of the double-nul terminator.
+        let end = find_double_null_terminator(p).add(1);
+        NullDelimitedDoubleNullTerminated {
+            current,
+            end,
+            _marker: PhantomData,
+        }
     }
-}}
+}
 
 /// Iterate oven nul-terminated substrings of the slice which must be
 /// terminated by double-nul sequence.
@@ -33,12 +39,15 @@ pub unsafe fn split_nul_delimited_double_nul_terminated_ptr<'a>(
 /// # Panics
 ///
 /// This function panics if slice does not end with double-nul terminator.
-pub fn split_nul_delimited_double_nul_terminated<'a>(buf: &U16Str) -> NullDelimitedDoubleNullTerminated<'a> {
+pub fn split_nul_delimited_double_nul_terminated<'a>(
+    buf: &U16Str,
+) -> NullDelimitedDoubleNullTerminated<'a> {
     let slice = buf.as_slice();
-    assert!(slice.ends_with(&[0u16, 0u16]), "slice must be terminated with double-nul");
-    unsafe {
-        split_nul_delimited_double_nul_terminated_ptr(slice.as_ptr())
-    }
+    assert!(
+        slice.ends_with(&[0u16, 0u16]),
+        "slice must be terminated with double-nul"
+    );
+    unsafe { split_nul_delimited_double_nul_terminated_ptr(slice.as_ptr()) }
 }
 
 /// Join strings with nul and ensure the whole thing is double-nul terminated. Strings must be
@@ -82,14 +91,16 @@ pub struct NullDelimitedDoubleNullTerminated<'a> {
 /// # Panics
 ///
 /// This function panics if `p` is null.
-pub unsafe fn find_double_null_terminator(mut p: *const u16) -> *const u16 { unsafe {
-    assert!(!p.is_null());
+pub unsafe fn find_double_null_terminator(mut p: *const u16) -> *const u16 {
+    unsafe {
+        assert!(!p.is_null());
 
-    while !is_double_null_terminator(p) {
-        p = p.add(1);
+        while !is_double_null_terminator(p) {
+            p = p.add(1);
+        }
+        p
     }
-    p
-}}
+}
 
 /// Reads item pointed by this `p` and the next item right after it,
 /// and compare both items with NULL value for their type.
@@ -97,11 +108,13 @@ pub unsafe fn find_double_null_terminator(mut p: *const u16) -> *const u16 { uns
 /// # Panics
 ///
 /// This function panics if `p` is null.
-pub unsafe fn is_double_null_terminator(p: *const u16) -> bool { unsafe {
-    assert!(!p.is_null());
+pub unsafe fn is_double_null_terminator(p: *const u16) -> bool {
+    unsafe {
+        assert!(!p.is_null());
 
-    p.read() == 0 && p.add(1).read() == 0
-}}
+        p.read() == 0 && p.add(1).read() == 0
+    }
+}
 
 mod imp {
     use super::*;
@@ -136,11 +149,11 @@ mod test {
     use super::*;
     use itertools::Itertools;
 
-    const U_EMP: &'static U16Str = u16str!("");                 // panic!()
-    const U_NUL_NUL: &'static U16Str = u16str!("\0\0");         // []
-    const U_ABC: &'static U16Str = u16str!("abc\0\0");          // ["abc\0"]
+    const U_EMP: &'static U16Str = u16str!(""); // panic!()
+    const U_NUL_NUL: &'static U16Str = u16str!("\0\0"); // []
+    const U_ABC: &'static U16Str = u16str!("abc\0\0"); // ["abc\0"]
     const U_ABC_DEF: &'static U16Str = u16str!("abc\0def\0\0"); // ["abc\0", "def\0"]
-    const U_NUL_DEF: &'static U16Str = u16str!("\0def\0\0");    // ["\0", "def\0"]
+    const U_NUL_DEF: &'static U16Str = u16str!("\0def\0\0"); // ["\0", "def\0"]
 
     const UC_EMP: &'static U16CStr = u16cstr!("");
     const UC_ABC: &'static U16CStr = u16cstr!("abc");

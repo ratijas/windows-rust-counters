@@ -3,24 +3,33 @@ use std::mem::align_of;
 
 use hexyl::*;
 
-use win_high::perf::{
-    consume::*,
-    nom::*,
-    types::*,
-    values::*,
-};
+use win_high::perf::{consume::*, nom::*, types::*, values::*};
 use win_high::prelude::v2::*;
 
 fn main() {
-    println!("Align of PERF_DATA_BLOCK          = {}", align_of::<PERF_DATA_BLOCK>());
-    println!("Align of PERF_OBJECT_TYPE         = {}", align_of::<PERF_OBJECT_TYPE>());
-    println!("Align of PERF_INSTANCE_DEFINITION = {}", align_of::<PERF_INSTANCE_DEFINITION>());
-    println!("Align of PERF_COUNTER_DEFINITION  = {}", align_of::<PERF_COUNTER_DEFINITION>());
-    println!("Align of PERF_COUNTER_BLOCK       = {}", align_of::<PERF_COUNTER_BLOCK>());
+    println!(
+        "Align of PERF_DATA_BLOCK          = {}",
+        align_of::<PERF_DATA_BLOCK>()
+    );
+    println!(
+        "Align of PERF_OBJECT_TYPE         = {}",
+        align_of::<PERF_OBJECT_TYPE>()
+    );
+    println!(
+        "Align of PERF_INSTANCE_DEFINITION = {}",
+        align_of::<PERF_INSTANCE_DEFINITION>()
+    );
+    println!(
+        "Align of PERF_COUNTER_DEFINITION  = {}",
+        align_of::<PERF_COUNTER_DEFINITION>()
+    );
+    println!(
+        "Align of PERF_COUNTER_BLOCK       = {}",
+        align_of::<PERF_COUNTER_BLOCK>()
+    );
     println!("Align of DWORD                    = {}", align_of::<u32>());
 
-    let meta = get_counters_info(None, UseLocale::English)
-        .expect("get_counters_info");
+    let meta = get_counters_info(None, UseLocale::English).expect("get_counters_info");
 
     // make sure we close HKEY afterwards
     let _hkey = RegConnectRegistryW_Safe(PCWSTR::null(), HKEY_PERFORMANCE_DATA)
@@ -39,7 +48,9 @@ fn main() {
     }
 
     const SYSTEM_NAME_INDEX: u32 = 11962;
-    let counter_uptime_index: u32 = meta.map().iter()
+    let counter_uptime_index: u32 = meta
+        .map()
+        .iter()
         .find(|(_, counter)| counter.name_value.as_str() == "SOS")
         .map(|(&index, _)| index as u32)
         .expect("Uptime counter name not found");
@@ -54,16 +65,23 @@ fn main() {
         let (_, perf_data) = perf_data_block(buf.as_slice()).expect("Parse data block");
 
         // Find System object
-        let obj_system = perf_data.object_types.iter()
+        let obj_system = perf_data
+            .object_types
+            .iter()
             .find(|obj| obj.ObjectNameTitleIndex == SYSTEM_NAME_INDEX)
             .expect("System object not found");
 
         unsafe {
-            let slice = std::slice::from_raw_parts(&obj_system.raw as *const PERF_OBJECT_TYPE as *const u8, obj_system.TotalByteLength as usize);
-            xxd( slice);
+            let slice = std::slice::from_raw_parts(
+                &obj_system.raw as *const PERF_OBJECT_TYPE as *const u8,
+                obj_system.TotalByteLength as usize,
+            );
+            xxd(slice);
         }
 
-        let counter_uptime = obj_system.counters.iter()
+        let counter_uptime = obj_system
+            .counters
+            .iter()
             .find(|counter| counter.CounterNameTitleIndex == counter_uptime_index)
             .expect("Uptime counter not found");
 
@@ -80,7 +98,7 @@ fn main() {
             //     let raw = get_slice(counter_uptime, block).expect("get slice");
             //     let mut bytes = [0u8; 4];
             //     bytes.copy_from_slice(raw);
-                // println!("Uptime: Raw = {:?}; U64 = {:#0x}; F64 = {}", raw, u64::from_ne_bytes(bytes), f64::from_ne_bytes(bytes));
+            // println!("Uptime: Raw = {:?}; U64 = {:#0x}; F64 = {}", raw, u64::from_ne_bytes(bytes), f64::from_ne_bytes(bytes));
             // }
             // println!("GetTickCount: {}", unsafe { GetTickCount() });
 
@@ -95,36 +113,53 @@ fn main() {
 
 fn print_perf_data(data: &PerfDataBlock, meta: &AllCounters) {
     for obj in data.object_types.iter() {
-        let name = &meta.get(obj.ObjectNameTitleIndex).expect("Object name").name_value;
+        let name = &meta
+            .get(obj.ObjectNameTitleIndex)
+            .expect("Object name")
+            .name_value;
         println!("Object #{}, name: {:?}", obj.ObjectNameTitleIndex, name);
         println!("Has instances? {}", obj.NumInstances != PERF_NO_INSTANCES);
         match &obj.data {
-            PerfObjectData::Singleton(block) => print_counters_data("", &*obj.counters, block, &meta),
+            PerfObjectData::Singleton(block) => {
+                print_counters_data("", &*obj.counters, block, &meta)
+            }
             PerfObjectData::Instances(pairs) => pairs.iter().for_each(|(instance, block)| {
-                println!("  Instance [{}], name: {:?}", instance.UniqueID, instance.name);
+                println!(
+                    "  Instance [{}], name: {:?}",
+                    instance.UniqueID, instance.name
+                );
                 print_counters_data("    ", &*obj.counters, block, &meta);
-            })
+            }),
         }
     }
 }
 
-fn print_counters_data(left_pad: &str, counters: &[PerfCounterDefinition], block: &PerfCounterBlock, meta: &AllCounters) {
+fn print_counters_data(
+    left_pad: &str,
+    counters: &[PerfCounterDefinition],
+    block: &PerfCounterBlock,
+    meta: &AllCounters,
+) {
     println!("{}Data block:", left_pad);
     xxd(block.data());
     println!("{}Counters:", left_pad);
     for c in counters {
         let raw = get_slice(c, block).expect("get slice");
-        let name = &meta.get(c.CounterNameTitleIndex).expect("Counter name").name_value;
+        let name = &meta
+            .get(c.CounterNameTitleIndex)
+            .expect("Counter name")
+            .name_value;
         let typ = CounterTypeDefinition::from_raw(c.CounterType).expect("Counter type");
 
-        println!("{}  Counter #{}, name: {:?}, scale: {}, offset: {}, size: {}, type: {:#010x}",
-                 left_pad,
-                 c.CounterNameTitleIndex,
-                 name,
-                 c.DefaultScale,
-                 c.CounterOffset,
-                 c.CounterSize,
-                 c.CounterType,
+        println!(
+            "{}  Counter #{}, name: {:?}, scale: {}, offset: {}, size: {}, type: {:#010x}",
+            left_pad,
+            c.CounterNameTitleIndex,
+            name,
+            c.DefaultScale,
+            c.CounterOffset,
+            c.CounterSize,
+            c.CounterType,
         );
         println!("{}    Type: {:?}", left_pad, typ);
         xxd(raw);
@@ -137,7 +172,7 @@ fn do_get_values() -> WinResult<Vec<u8>> {
     // Retrieve counter data for the Processor object.
     let value = query_value(
         HKEY_PERFORMANCE_DATA,
-        "11962",  // system uptime
+        "11962", // system uptime
         Some(&mut typ),
         Some(2_000_000),
     )?;

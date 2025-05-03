@@ -10,42 +10,63 @@ pub trait Rx {
     /// Blocking receive value.
     fn recv(&mut self) -> Result<Option<Self::Item>, Box<dyn Error>>;
 
-    fn deduplicate(self) -> DeduplicateRx<Self> where Self: Sized {
+    fn deduplicate(self) -> DeduplicateRx<Self>
+    where
+        Self: Sized,
+    {
         DeduplicateRx::new(self)
     }
 
-    fn fuse(self) -> FuseRx<Self> where Self: Sized {
+    fn fuse(self) -> FuseRx<Self>
+    where
+        Self: Sized,
+    {
         FuseRx::new(self)
     }
 
-    fn interval(self, rate: Duration) -> Interval<Self, IntervalRoleRx> where Self: Sized {
+    fn interval(self, rate: Duration) -> Interval<Self, IntervalRoleRx>
+    where
+        Self: Sized,
+    {
         Interval::new(self, rate)
     }
 
-    fn map<F>(self, f: F) -> MapRx<Self, F> where Self: Sized {
+    fn map<F>(self, f: F) -> MapRx<Self, F>
+    where
+        Self: Sized,
+    {
         MapRx::new(self, f)
     }
 
-    fn and_then<F>(self, f: F) -> AndThenRx<Self, F> where Self: Sized {
+    fn and_then<F>(self, f: F) -> AndThenRx<Self, F>
+    where
+        Self: Sized,
+    {
         AndThenRx::new(self, f)
     }
 
     fn flatten<T>(self) -> FlattenRx<Self, T>
-        where Self: Sized,
-              Self::Item: IntoIterator,
+    where
+        Self: Sized,
+        Self::Item: IntoIterator,
     {
         FlattenRx::new(self)
     }
 
-    fn collect<B: FromIterator<Self::Item>>(self) -> Result<B, Box<dyn Error>> where Self: Sized {
+    fn collect<B: FromIterator<Self::Item>>(self) -> Result<B, Box<dyn Error>>
+    where
+        Self: Sized,
+    {
         RxIteratorAdapter::new(self).collect()
     }
 
-    fn collect_vec(self) -> Result<Vec<Self::Item>, Box<dyn Error>> where Self: Sized {
+    fn collect_vec(self) -> Result<Vec<Self::Item>, Box<dyn Error>>
+    where
+        Self: Sized,
+    {
         self.collect()
     }
 }
-
 
 pub struct ConstStringRx {
     string: String,
@@ -53,9 +74,7 @@ pub struct ConstStringRx {
 
 impl ConstStringRx {
     pub fn new<S: Into<String>>(s: S) -> Self {
-        ConstStringRx {
-            string: s.into()
-        }
+        ConstStringRx { string: s.into() }
     }
 }
 
@@ -67,16 +86,13 @@ impl Rx for ConstStringRx {
     }
 }
 
-
 pub struct CounterRx {
     i: isize,
 }
 
 impl CounterRx {
     pub fn new() -> Self {
-        CounterRx {
-            i: 0
-        }
+        CounterRx { i: 0 }
     }
 }
 
@@ -90,7 +106,6 @@ impl Rx for CounterRx {
     }
 }
 
-
 pub struct DeduplicateRx<R: Rx> {
     inner: R,
     last: Option<Option<R::Item>>,
@@ -98,16 +113,14 @@ pub struct DeduplicateRx<R: Rx> {
 
 impl<R: Rx> DeduplicateRx<R> {
     pub fn new(inner: R) -> Self {
-        DeduplicateRx {
-            inner,
-            last: None,
-        }
+        DeduplicateRx { inner, last: None }
     }
 }
 
 impl<R> Rx for DeduplicateRx<R>
-    where R: Rx,
-          R::Item: Clone + Eq,
+where
+    R: Rx,
+    R::Item: Clone + Eq,
 {
     type Item = R::Item;
 
@@ -131,7 +144,6 @@ impl<R> Rx for DeduplicateRx<R>
         Ok(new)
     }
 }
-
 
 /// Stops polling inner `Rx` after first error, always returning `Ok(None)` afterwards.
 pub struct FuseRx<R> {
@@ -166,7 +178,6 @@ impl<R: Rx> Rx for FuseRx<R> {
     }
 }
 
-
 impl<R: Rx> Rx for Interval<R, IntervalRoleRx> {
     type Item = R::Item;
 
@@ -175,7 +186,6 @@ impl<R: Rx> Rx for Interval<R, IntervalRoleRx> {
         self.inner.recv()
     }
 }
-
 
 pub struct MapRx<R, F> {
     inner: R,
@@ -189,7 +199,8 @@ impl<R, F> MapRx<R, F> {
 }
 
 impl<R: Rx, F, U> Rx for MapRx<R, F>
-    where F: FnMut(R::Item) -> U
+where
+    F: FnMut(R::Item) -> U,
 {
     type Item = U;
 
@@ -197,7 +208,6 @@ impl<R: Rx, F, U> Rx for MapRx<R, F>
         Ok(self.inner.recv()?.map(&mut self.f))
     }
 }
-
 
 pub struct AndThenRx<R, F> {
     inner: R,
@@ -211,7 +221,8 @@ impl<R, F> AndThenRx<R, F> {
 }
 
 impl<R: Rx, F, U> Rx for AndThenRx<R, F>
-    where F: FnMut(&mut R) -> Result<Option<U>, Box<dyn Error>>
+where
+    F: FnMut(&mut R) -> Result<Option<U>, Box<dyn Error>>,
 {
     type Item = U;
 
@@ -219,7 +230,6 @@ impl<R: Rx, F, U> Rx for AndThenRx<R, F>
         (self.f)(&mut self.inner)
     }
 }
-
 
 pub struct FlattenRx<R, T> {
     inner: R,
@@ -236,7 +246,8 @@ impl<R, T> FlattenRx<R, T> {
 }
 
 impl<R, T> Rx for FlattenRx<R, T>
-    where R: Rx<Item=Vec<T>>
+where
+    R: Rx<Item = Vec<T>>,
 {
     type Item = T;
 
@@ -259,16 +270,13 @@ impl<R, T> Rx for FlattenRx<R, T>
     }
 }
 
-
 pub struct RxIteratorAdapter<R> {
-    inner: R
+    inner: R,
 }
 
 impl<R> RxIteratorAdapter<R> {
     pub fn new(inner: R) -> Self {
-        RxIteratorAdapter {
-            inner
-        }
+        RxIteratorAdapter { inner }
     }
 }
 
@@ -284,21 +292,19 @@ impl<R: Rx> Iterator for RxIteratorAdapter<R> {
     }
 }
 
-
 pub struct IteratorRx<I> {
-    iter: I
+    iter: I,
 }
 
 impl<I> IteratorRx<I> {
     pub fn new(iter: I) -> Self {
-        IteratorRx {
-            iter
-        }
+        IteratorRx { iter }
     }
 }
 
 impl<I> Rx for IteratorRx<I>
-    where I: Iterator
+where
+    I: Iterator,
 {
     type Item = I::Item;
 
@@ -308,7 +314,8 @@ impl<I> Rx for IteratorRx<I>
 }
 
 impl<I> From<I> for IteratorRx<I::IntoIter>
-    where I: IntoIterator
+where
+    I: IntoIterator,
 {
     fn from(from: I) -> Self {
         Self::new(from.into_iter())

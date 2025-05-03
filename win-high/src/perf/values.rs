@@ -25,7 +25,10 @@ impl CounterValue {
         }
     }
 
-    pub fn try_get(def: &PerfCounterDefinition, block: &PerfCounterBlock) -> Result<Self, ValueError> {
+    pub fn try_get(
+        def: &PerfCounterDefinition,
+        block: &PerfCounterBlock,
+    ) -> Result<Self, ValueError> {
         get_value(def, block)
     }
 }
@@ -99,25 +102,24 @@ pub fn get_slice<'a>(def: &PerfCounterDefinition, block: &'a PerfCounterBlock) -
     block.data().get(offset..offset + len)
 }
 
-fn get_value(def: &PerfCounterDefinition, block: &PerfCounterBlock) -> Result<CounterValue, ValueError> {
+fn get_value(
+    def: &PerfCounterDefinition,
+    block: &PerfCounterBlock,
+) -> Result<CounterValue, ValueError> {
     let typ = CounterTypeDefinition::try_from(def).expect("counter");
     let mut slice = get_slice(def, block).ok_or(ValueError::BadSize)?;
     let value = unsafe {
         match typ.size() {
             Size::Dword => {
                 let number = match upcast::<u32>(slice) {
-                    Ok(slice) if slice.len() == 1 => {
-                        (*slice).as_ptr().read_unaligned()
-                    }
+                    Ok(slice) if slice.len() == 1 => (*slice).as_ptr().read_unaligned(),
                     _ => return Err(ValueError::BadSize),
                 };
                 CounterValue::Dword(number)
             }
             Size::Large => {
                 let number = match upcast::<u64>(slice) {
-                    Ok(slice) if slice.len() == 1 => {
-                        (*slice).as_ptr().read_unaligned()
-                    }
+                    Ok(slice) if slice.len() == 1 => (*slice).as_ptr().read_unaligned(),
                     _ => return Err(ValueError::BadSize),
                 };
                 CounterValue::Large(number)
@@ -127,7 +129,8 @@ fn get_value(def: &PerfCounterDefinition, block: &PerfCounterBlock) -> Result<Co
                 if let CounterType::Text(encoding) = typ.counter_type() {
                     match encoding {
                         Text::Unicode => {
-                            let u16len = upcast::<u16>(slice).map_err(|_| ValueError::BadSize)?.len();
+                            let u16len =
+                                upcast::<u16>(slice).map_err(|_| ValueError::BadSize)?.len();
                             let mut u16slice = Vec::<u16>::with_capacity(u16len);
                             // u8-aligned read
                             downcast_mut(u16slice.as_mut_slice()).copy_from_slice(slice);
@@ -139,7 +142,8 @@ fn get_value(def: &PerfCounterDefinition, block: &PerfCounterBlock) -> Result<Co
                             while slice.ends_with(&[0u8]) {
                                 slice = &slice[..slice.len() - 1];
                             }
-                            let text = std::str::from_utf8(slice).map_err(|_| ValueError::StringFormat)?;
+                            let text =
+                                std::str::from_utf8(slice).map_err(|_| ValueError::StringFormat)?;
                             CounterValue::TextAscii(text.to_owned())
                         }
                     }

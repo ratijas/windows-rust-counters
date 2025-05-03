@@ -14,7 +14,9 @@ pub struct ConstString {
 
 impl ConstString {
     pub fn new(s: &str) -> Self {
-        Self { string: s.to_string() }
+        Self {
+            string: s.to_string(),
+        }
     }
 }
 
@@ -44,12 +46,7 @@ impl RegKeyStringsProvider {
             None,
             KEY_READ,
         )?;
-        let buffer = query_value(
-            *hkey,
-            &self.value_name,
-            None,
-            None,
-        )?;
+        let buffer = query_value(*hkey, &self.value_name, None, None)?;
         Ok(unsafe { U16CStr::from_ptr_str(buffer.as_ptr() as *const _) }.to_string_lossy())
     }
 }
@@ -70,16 +67,14 @@ impl RandomJokeProvider {
     pub fn fetch(&self) -> Result<String, Box<dyn Error>> {
         const URL: &str = "https://api.chucknorris.io/jokes/random?category=dev";
 
-        let resp: serde_json::Value = reqwest::blocking::get(URL)?
-            .json()?;
+        let resp: serde_json::Value = reqwest::blocking::get(URL)?.json()?;
         let joke = Self::get_in(&resp).ok_or("invalid json")?;
         let joke = xml::unescape(&joke).unwrap_or(joke.to_string());
         Ok(joke)
     }
 
     fn get_in(json: &serde_json::Value) -> Option<&str> {
-        json.get("value")?
-            .as_str()
+        json.get("value")?.as_str()
     }
 }
 

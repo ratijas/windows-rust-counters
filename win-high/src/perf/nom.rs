@@ -48,14 +48,14 @@ impl PerfObjectData {
     pub fn singleton(&self) -> Option<&PerfCounterBlock> {
         match self {
             Self::Singleton(block) => Some(block),
-            Self::Instances(..) => None
+            Self::Instances(..) => None,
         }
     }
 
     pub fn instances(&self) -> Option<&[(PerfInstanceDefinition, PerfCounterBlock)]> {
         match self {
             Self::Singleton(..) => None,
-            Self::Instances(vec) => Some(vec)
+            Self::Instances(vec) => Some(vec),
         }
     }
 }
@@ -84,11 +84,14 @@ pub fn perf_data_block(input: &[u8]) -> IResult<&[u8], PerfDataBlock> {
     let (_, object_types) = nom::multi::many_m_n(n, n, perf_object_type).parse(i1)?;
     // yet again, skipping TotalByteLength from the beginning the whole input slice.
     let (rest, _) = nom::bytes::complete::take(raw.TotalByteLength)(input)?;
-    Ok((rest, PerfDataBlock {
-        raw,
-        system_name,
-        object_types,
-    }))
+    Ok((
+        rest,
+        PerfDataBlock {
+            raw,
+            system_name,
+            object_types,
+        },
+    ))
 }
 
 pub fn perf_object_type(input: &[u8]) -> IResult<&[u8], PerfObjectType> {
@@ -110,27 +113,29 @@ pub fn perf_object_type(input: &[u8]) -> IResult<&[u8], PerfObjectType> {
     } else {
         let n = raw.NumInstances as usize;
         let (_, pairs) = nom::multi::many_m_n(
-            n, n,
-            nom::sequence::pair(
-                perf_instance_definition,
-                perf_counter_block,
-            ),
-        ).parse(i2)?;
+            n,
+            n,
+            nom::sequence::pair(perf_instance_definition, perf_counter_block),
+        )
+        .parse(i2)?;
         PerfObjectData::Instances(pairs)
     };
     let (rest, _) = nom::bytes::complete::take(raw.TotalByteLength)(input)?;
-    Ok((rest, PerfObjectType {
-        raw,
-        counters,
-        data,
-    }))
+    Ok((
+        rest,
+        PerfObjectType {
+            raw,
+            counters,
+            data,
+        },
+    ))
 }
 
 pub fn perf_counter_definition(input: &[u8]) -> IResult<&[u8], PerfCounterDefinition> {
-    nom::combinator::map(
-        take_struct::<PERF_COUNTER_DEFINITION>,
-        |raw| PerfCounterDefinition { raw }
-    ).parse(input)
+    nom::combinator::map(take_struct::<PERF_COUNTER_DEFINITION>, |raw| {
+        PerfCounterDefinition { raw }
+    })
+    .parse(input)
 }
 
 pub fn perf_instance_definition(input: &[u8]) -> IResult<&[u8], PerfInstanceDefinition> {
@@ -138,17 +143,19 @@ pub fn perf_instance_definition(input: &[u8]) -> IResult<&[u8], PerfInstanceDefi
     // same as perf_data_block: offset is from the beginning of the input.
     let (_, name) = u16cstr(input, raw.NameOffset, raw.NameLength)?;
     let (rest, _) = nom::bytes::complete::take(raw.ByteLength)(input)?;
-    Ok((rest, PerfInstanceDefinition {
-        raw,
-        name,
-    }))
+    Ok((rest, PerfInstanceDefinition { raw, name }))
 }
 
 pub fn perf_counter_block(input: &[u8]) -> IResult<&[u8], PerfCounterBlock> {
     let (_, raw) = take_struct::<PERF_COUNTER_BLOCK>(input)?;
     // ensure that length of input is large enough
     let (rest, payload) = nom::bytes::complete::take(raw.ByteLength)(input)?;
-    Ok((rest, PerfCounterBlock { payload: payload.to_vec() }))
+    Ok((
+        rest,
+        PerfCounterBlock {
+            payload: payload.to_vec(),
+        },
+    ))
 }
 
 pub fn take_struct<T>(input: &[u8]) -> nom::IResult<&[u8], T>
@@ -159,7 +166,8 @@ where
     nom::combinator::map(
         nom::bytes::complete::take(mem::size_of::<T>()),
         |data: &[u8]| unsafe { (data.as_ptr() as *const T).read_unaligned() },
-    ).parse(input)
+    )
+    .parse(input)
 }
 
 pub fn u16cstr(input: &[u8], offset: u32, len: u32) -> IResult<&[u8], U16CString> {
@@ -183,17 +191,21 @@ fn no_zst<T>() {
     }
 }
 
-pub unsafe fn downcast<T>(input: &[T]) -> &[u8] { unsafe {
-    no_zst::<T>();
-    let len = input.len() * mem::size_of::<T>();
-    std::slice::from_raw_parts(input.as_ptr().cast(), len)
-}}
+pub unsafe fn downcast<T>(input: &[T]) -> &[u8] {
+    unsafe {
+        no_zst::<T>();
+        let len = input.len() * mem::size_of::<T>();
+        std::slice::from_raw_parts(input.as_ptr().cast(), len)
+    }
+}
 
-pub unsafe fn downcast_mut<T>(input: &mut [T]) -> &mut [u8] { unsafe {
-    no_zst::<T>();
-    let len = input.len() * mem::size_of::<T>();
-    std::slice::from_raw_parts_mut(input.as_mut_ptr().cast(), len)
-}}
+pub unsafe fn downcast_mut<T>(input: &mut [T]) -> &mut [u8] {
+    unsafe {
+        no_zst::<T>();
+        let len = input.len() * mem::size_of::<T>();
+        std::slice::from_raw_parts_mut(input.as_mut_ptr().cast(), len)
+    }
+}
 
 /// Error value is the remainder of a division of length by size of `T`.
 /// Returned raw slice may be unaligned for reading.
@@ -215,7 +227,10 @@ pub unsafe fn upcast_mut<T>(input: &mut [u8]) -> Result<*mut [T], NonZeroUsize> 
     let rem = input.len() % mem::size_of::<T>();
     match NonZeroUsize::new(rem) {
         Some(rem) => Err(rem),
-        None => Ok(std::ptr::slice_from_raw_parts_mut(input.as_mut_ptr().cast(), len)),
+        None => Ok(std::ptr::slice_from_raw_parts_mut(
+            input.as_mut_ptr().cast(),
+            len,
+        )),
     }
 }
 
@@ -225,13 +240,15 @@ pub unsafe fn upcast_mut<T>(input: &mut [u8]) -> Result<*mut [T], NonZeroUsize> 
 /// SAFETY: this function ensures that input length is divisible by size of `T`,
 /// but otherwise the semantics of achieved result depends on the actual `T` type.
 /// Returned raw slice may be unaligned for reading.
-pub unsafe fn view<T>(input: &[u8]) -> IResult<&[u8], *const [T]> { unsafe {
-    let (empty, i1) = nom::bytes::complete::take(input.len())(input)?;
-    debug_assert!(empty.is_empty());
-    let slice_t = upcast::<T>(i1)
-        .map_err(|rem| Err::Incomplete(Needed::new(mem::size_of::<T>() - rem.get())))?;
-    Ok((empty, slice_t))
-}}
+pub unsafe fn view<T>(input: &[u8]) -> IResult<&[u8], *const [T]> {
+    unsafe {
+        let (empty, i1) = nom::bytes::complete::take(input.len())(input)?;
+        debug_assert!(empty.is_empty());
+        let slice_t = upcast::<T>(i1)
+            .map_err(|rem| Err::Incomplete(Needed::new(mem::size_of::<T>() - rem.get())))?;
+        Ok((empty, slice_t))
+    }
+}
 
 mod imp_deref {
     use std::ops::Deref;
@@ -273,11 +290,12 @@ mod imp_deref {
 
 #[cfg(test)]
 mod test {
-    use super::*;
     use super::super::values::*;
+    use super::*;
 
     const SAMPLE_SYSTEM: &'static [u8] = include_bytes!("test/sample_system_perf_data_block.bin");
-    const SAMPLE_PROCESSOR: &'static [u8] = include_bytes!("test/sample_processor_perf_data_block.bin");
+    const SAMPLE_PROCESSOR: &'static [u8] =
+        include_bytes!("test/sample_processor_perf_data_block.bin");
 
     // singleton object test
     #[test]
@@ -290,7 +308,9 @@ mod test {
         assert_eq!(obj.raw.NumCounters, 18);
         match &obj.data {
             PerfObjectData::Singleton(block) => {
-                let processes_counter = obj.counters.iter()
+                let processes_counter = obj
+                    .counters
+                    .iter()
                     .find(|c| c.raw.CounterNameTitleIndex == 248)
                     .expect("Processes counter");
                 let res = CounterValue::try_get(processes_counter, block);

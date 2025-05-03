@@ -39,7 +39,8 @@ pub trait SignalValue: Clone + Eq + PartialOrd<Self> {
 }
 
 impl<T> RtsmProto<T>
-    where T: SignalValue
+where
+    T: SignalValue,
 {
     pub fn new(off: Range<T>, on: Range<T>) -> Self {
         RtsmProto {
@@ -56,7 +57,9 @@ impl<T> RtsmProto<T>
     }
 
     pub fn value(&self) -> T {
-        self.current.as_ref().map(|pair| pair.1.clone())
+        self.current
+            .as_ref()
+            .map(|pair| pair.1.clone())
             .unwrap_or_else(|| self.off.start.clone())
     }
 
@@ -101,9 +104,7 @@ impl<T> RtsmProto<T>
     pub fn decode(&mut self, value: T) -> Result<Option<Signal>, T> {
         match self.current.clone() {
             // signal stays still
-            Some((_, current_value)) if value == current_value => {
-                Ok(None)
-            }
+            Some((_, current_value)) if value == current_value => Ok(None),
             _ => {
                 // different value appeared
                 match self.signal_for_value(value.clone()) {
@@ -122,7 +123,8 @@ impl<T> RtsmProto<T>
 
     /// Decode the whole signal at once, or fail at first erroneous value.
     pub fn decode_all(&mut self, values: &[T]) -> Result<Vec<Signal>, T> {
-        values.iter()
+        values
+            .iter()
             .cloned()
             .map(|v| self.decode(v))
             .filter_map(|res|
@@ -131,8 +133,8 @@ impl<T> RtsmProto<T>
                     Ok(None) => None,
                     Ok(Some(signal)) => Some(Ok(signal)),
                     Err(e) => Some(Err(e)),
-                }
-            ).collect()
+                })
+            .collect()
     }
 }
 
@@ -171,10 +173,15 @@ mod test {
         // off: 50, 51
         // on: 0, 1, 2
         let mut p = RtsmProto::new(0..3, 50..52);
-        let encoded = iter::once(p.value()).chain(
-            SIGNAL.iter().cloned().map(|s| p.encode(s))
-        ).collect::<Vec<_>>();
-        assert_eq!(encoded, iter::once(0).chain(VALUES.iter().cloned()).collect::<Vec<_>>());
+        let encoded = iter::once(p.value())
+            .chain(SIGNAL.iter().cloned().map(|s| p.encode(s)))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            encoded,
+            iter::once(0)
+                .chain(VALUES.iter().cloned())
+                .collect::<Vec<_>>()
+        );
     }
 
     #[test]

@@ -25,13 +25,13 @@ pub struct CounterTypeDefinition(u32);
 /// Container for bit-masks of `CounterTypeDefinition` components.
 #[repr(u32)]
 pub enum CounterTypeMask {
-    Reserved /*      */ = 0b_00000000_00000000_11110000_11111111,
-    Size /*          */ = 0b_00000000_00000000_00000011_00000000,
-    CounterType /*   */ = 0b_00000000_00000000_00001100_00000000,
-    CounterSubType /**/ = 0b_00000000_00001111_00000000_00000000,
-    TimeBase /*      */ = 0b_00000000_00110000_00000000_00000000,
-    CalcModifier /*  */ = 0b_00001111_11000000_00000000_00000000,
-    DisplayFlags /*  */ = 0b_11110000_00000000_00000000_00000000,
+    Reserved = 0b_00000000_00000000_11110000_11111111,
+    Size = 0b_00000000_00000000_00000011_00000000,
+    CounterType = 0b_00000000_00000000_00001100_00000000,
+    CounterSubType = 0b_00000000_00001111_00000000_00000000,
+    TimeBase = 0b_00000000_00110000_00000000_00000000,
+    CalcModifier = 0b_00001111_11000000_00000000_00000000,
+    DisplayFlags = 0b_11110000_00000000_00000000_00000000,
 }
 
 /// select one of the following to indicate the counter's data size
@@ -212,15 +212,17 @@ impl CounterTypeDefinition {
         ))
     }
 
-    pub unsafe fn from_raw_unchecked(value: u32) -> Self { unsafe {
-        Self::new(
-            Size::from_raw(value),
-            CounterType::from_raw_unchecked(value),
-            Timer::from_raw_unchecked(value),
-            CalculationModifiers::from_raw_truncate(value),
-            DisplayFlags::from_raw_unchecked(value),
-        )
-    }}
+    pub unsafe fn from_raw_unchecked(value: u32) -> Self {
+        unsafe {
+            Self::new(
+                Size::from_raw(value),
+                CounterType::from_raw_unchecked(value),
+                Timer::from_raw_unchecked(value),
+                CalculationModifiers::from_raw_truncate(value),
+                DisplayFlags::from_raw_unchecked(value),
+            )
+        }
+    }
     #[inline(always)]
     pub const fn into_raw(self) -> u32 {
         self.0
@@ -328,14 +330,16 @@ mod imp {
             })
         }
 
-        pub unsafe fn from_raw_unchecked(value: u32) -> Self { unsafe {
-            match RawType::from_raw(value) {
-                RawType::Number => CounterType::Number(Number::from_raw_unchecked(value)),
-                RawType::Counter => CounterType::Counter(Counter::from_raw_unchecked(value)),
-                RawType::Text => CounterType::Text(Text::from_raw_unchecked(value)),
-                RawType::Zero => CounterType::Zero,
+        pub unsafe fn from_raw_unchecked(value: u32) -> Self {
+            unsafe {
+                match RawType::from_raw(value) {
+                    RawType::Number => CounterType::Number(Number::from_raw_unchecked(value)),
+                    RawType::Counter => CounterType::Counter(Counter::from_raw_unchecked(value)),
+                    RawType::Text => CounterType::Text(Text::from_raw_unchecked(value)),
+                    RawType::Zero => CounterType::Zero,
+                }
             }
-        }}
+        }
 
         pub fn sub_type(&self) -> u32 {
             match *self {
@@ -365,10 +369,12 @@ mod imp {
             })
         }
 
-        pub unsafe fn from_raw_unchecked(value: u32) -> Self { unsafe {
-            // SAFETY: unsafe
-            transmute(sub_type(value))
-        }}
+        pub unsafe fn from_raw_unchecked(value: u32) -> Self {
+            unsafe {
+                // SAFETY: unsafe
+                transmute(sub_type(value))
+            }
+        }
 
         #[inline(always)]
         pub const fn into_raw(self) -> u32 {
@@ -392,10 +398,12 @@ mod imp {
             })
         }
 
-        pub unsafe fn from_raw_unchecked(value: u32) -> Self { unsafe {
-            // SAFETY: unsafe
-            transmute(sub_type(value))
-        }}
+        pub unsafe fn from_raw_unchecked(value: u32) -> Self {
+            unsafe {
+                // SAFETY: unsafe
+                transmute(sub_type(value))
+            }
+        }
 
         #[inline(always)]
         pub const fn into_raw(self) -> u32 {
@@ -413,10 +421,12 @@ mod imp {
             })
         }
 
-        pub unsafe fn from_raw_unchecked(value: u32) -> Self { unsafe {
-            // SAFETY: unsafe
-            transmute(sub_type(value))
-        }}
+        pub unsafe fn from_raw_unchecked(value: u32) -> Self {
+            unsafe {
+                // SAFETY: unsafe
+                transmute(sub_type(value))
+            }
+        }
 
         #[inline(always)]
         pub const fn into_raw(self) -> u32 {
@@ -435,11 +445,13 @@ mod imp {
             })
         }
 
-        pub unsafe fn from_raw_unchecked(value: u32) -> Self { unsafe {
-            let value = sub_type(value);
-            // SAFETY: unsafe
-            transmute(value)
-        }}
+        pub unsafe fn from_raw_unchecked(value: u32) -> Self {
+            unsafe {
+                let value = sub_type(value);
+                // SAFETY: unsafe
+                transmute(value)
+            }
+        }
 
         #[inline(always)]
         pub const fn into_raw(self) -> u32 {
@@ -476,10 +488,12 @@ mod imp {
             })
         }
 
-        pub unsafe fn from_raw_unchecked(value: u32) -> Self { unsafe {
-            let value = value & CounterTypeMask::DisplayFlags.into_raw();
-            transmute(value)
-        }}
+        pub unsafe fn from_raw_unchecked(value: u32) -> Self {
+            unsafe {
+                let value = value & CounterTypeMask::DisplayFlags.into_raw();
+                transmute(value)
+            }
+        }
 
         #[inline(always)]
         pub const fn into_raw(self) -> u32 {

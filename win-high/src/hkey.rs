@@ -4,18 +4,11 @@ use std::rc::Rc;
 
 use crate::prelude::v2::*;
 
-pub fn RegConnectRegistryW_Safe(
-    lpMachineName: PCWSTR,
-    hKey: HKEY,
-) -> WinResult<HKey_Safe> {
+pub fn RegConnectRegistryW_Safe(lpMachineName: PCWSTR, hKey: HKEY) -> WinResult<HKey_Safe> {
     let mut phkResult: HKEY = HKEY::default();
 
     unsafe {
-        let error_code = RegConnectRegistryW(
-            lpMachineName,
-            hKey,
-            &mut phkResult as *mut HKEY,
-        );
+        let error_code = RegConnectRegistryW(lpMachineName, hKey, &mut phkResult as *mut HKEY);
 
         if error_code != ERROR_SUCCESS {
             return Err(WinError::new_with_message(error_code));
@@ -50,13 +43,9 @@ pub fn RegOpenKeyEx_Safe(
     Ok(HKey_Safe::owned(phkResult))
 }
 
-pub fn RegCloseKey_Safe(
-    hKey: HKEY,
-) -> WinResult<()> {
+pub fn RegCloseKey_Safe(hKey: HKEY) -> WinResult<()> {
     unsafe {
-        let error_code = RegCloseKey(
-            hKey
-        );
+        let error_code = RegCloseKey(hKey);
 
         if error_code != ERROR_SUCCESS {
             return Err(WinError::new_with_message(error_code));
@@ -91,7 +80,7 @@ impl std::ops::Deref for HKey_Safe {
 
     fn deref(&self) -> &Self::Target {
         match self {
-            Self::Owned(hkey) => hkey
+            Self::Owned(hkey) => hkey,
         }
     }
 }
@@ -99,10 +88,11 @@ impl std::ops::Deref for HKey_Safe {
 impl Drop for HKey_Safe {
     fn drop(&mut self) {
         match self {
-            HKey_Safe::Owned(_) =>
+            HKey_Safe::Owned(_) => {
                 if let Err(e) = RegCloseKey_Safe(**self) {
                     println!("RegCloseKey Error: {}", e);
                 }
+            }
         }
     }
 }
