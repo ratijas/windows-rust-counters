@@ -487,10 +487,10 @@ mod imp {
         }
     }
 
-    impl<'a> TryFrom<&PerfCounterDefinition<'a>> for CounterTypeDefinition {
+    impl<'a> TryFrom<&PerfCounterDefinition> for CounterTypeDefinition {
         type Error = ();
 
-        fn try_from(counter: &PerfCounterDefinition<'a>) -> Result<Self, Self::Error> {
+        fn try_from(counter: &PerfCounterDefinition) -> Result<Self, Self::Error> {
             Self::from_raw(counter.raw.CounterType).ok_or(())
         }
     }

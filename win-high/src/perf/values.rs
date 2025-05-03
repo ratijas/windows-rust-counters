@@ -24,6 +24,10 @@ impl CounterValue {
             Self::Zero => CounterVal::Zero,
         }
     }
+
+    pub fn try_get(def: &PerfCounterDefinition, block: &PerfCounterBlock) -> Result<Self, ValueError> {
+        get_value(def, block)
+    }
 }
 
 /// Borrowed wrapper for counter value.
@@ -49,7 +53,7 @@ pub enum ValueError {
     UnknownType,
 }
 
-impl<'b> CounterVal<'b> {
+impl<'a> CounterVal<'a> {
     pub fn to_owned(&self) -> CounterValue {
         match *self {
             Self::Dword(value) => CounterValue::Dword(value),
@@ -58,10 +62,6 @@ impl<'b> CounterVal<'b> {
             Self::TextAscii(str) => CounterValue::TextAscii(str.to_owned()),
             Self::Zero => CounterValue::Zero,
         }
-    }
-
-    pub fn try_get(def: &PerfCounterDefinition<'_>, block: &'b PerfCounterBlock<'_>) -> Result<Self, ValueError> {
-        get_value(def, block)
     }
 
     pub fn write(&self, buffer: &mut [u8]) -> Result<(), ValueError> {
@@ -93,35 +93,46 @@ impl<'b> CounterVal<'b> {
     }
 }
 
-pub fn get_slice<'a>(def: &PerfCounterDefinition<'_>, block: &'a PerfCounterBlock<'_>) -> Option<&'a [u8]> {
+pub fn get_slice<'a>(def: &PerfCounterDefinition, block: &'a PerfCounterBlock) -> Option<&'a [u8]> {
     let len = def.raw.CounterSize as usize;
     let offset = def.raw.CounterOffset as usize;
     block.data().get(offset..offset + len)
 }
 
-fn get_value<'a>(def: &PerfCounterDefinition<'_>, block: &'a PerfCounterBlock<'_>) -> Result<CounterVal<'a>, ValueError> {
+fn get_value(def: &PerfCounterDefinition, block: &PerfCounterBlock) -> Result<CounterValue, ValueError> {
     let typ = CounterTypeDefinition::try_from(def).expect("counter");
     let mut slice = get_slice(def, block).ok_or(ValueError::BadSize)?;
     let value = unsafe {
         match typ.size() {
             Size::Dword => {
-                let number = upcast::<u32>(slice).map_err(|_| ValueError::BadSize)?
-                    .get(0).ok_or(ValueError::NoData)?.clone();
-                CounterVal::Dword(number)
+                let number = match upcast::<u32>(slice) {
+                    Ok(slice) if slice.len() == 1 => {
+                        (*slice).as_ptr().read_unaligned()
+                    }
+                    _ => return Err(ValueError::BadSize),
+                };
+                CounterValue::Dword(number)
             }
             Size::Large => {
-                let number = upcast::<u64>(slice).map_err(|_| ValueError::BadSize)?
-                    .get(0).ok_or(ValueError::NoData)?.clone();
-                CounterVal::Large(number)
+                let number = match upcast::<u64>(slice) {
+                    Ok(slice) if slice.len() == 1 => {
+                        (*slice).as_ptr().read_unaligned()
+                    }
+                    _ => return Err(ValueError::BadSize),
+                };
+                CounterValue::Large(number)
             }
-            Size::Zero => CounterVal::Zero,
+            Size::Zero => CounterValue::Zero,
             Size::Var => {
                 if let CounterType::Text(encoding) = typ.counter_type() {
                     match encoding {
                         Text::Unicode => {
-                            let u16slice = upcast::<u16>(slice).map_err(|_| ValueError::BadSize)?;
-                            let text = U16CStr::from_slice_truncate(u16slice).map_err(|_| ValueError::StringFormat)?;
-                            CounterVal::TextUnicode(text)
+                            let u16len = upcast::<u16>(slice).map_err(|_| ValueError::BadSize)?.len();
+                            let mut u16slice = Vec::<u16>::with_capacity(u16len);
+                            // u8-aligned read
+                            downcast_mut(u16slice.as_mut_slice()).copy_from_slice(slice);
+                            let text = U16CString::from_vec_truncate(u16slice);
+                            CounterValue::TextUnicode(text)
                         }
                         Text::Ascii => {
                             // is there slice.trim method?
@@ -129,7 +140,7 @@ fn get_value<'a>(def: &PerfCounterDefinition<'_>, block: &'a PerfCounterBlock<'_
                                 slice = &slice[..slice.len() - 1];
                             }
                             let text = std::str::from_utf8(slice).map_err(|_| ValueError::StringFormat)?;
-                            CounterVal::TextAscii(text)
+                            CounterValue::TextAscii(text.to_owned())
                         }
                     }
                 } else {

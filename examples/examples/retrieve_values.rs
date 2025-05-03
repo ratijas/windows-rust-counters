@@ -59,7 +59,7 @@ fn main() {
             .expect("System object not found");
 
         unsafe {
-            let slice = std::slice::from_raw_parts(obj_system.raw as *const PERF_OBJECT_TYPE as *const u8, obj_system.TotalByteLength as usize);
+            let slice = std::slice::from_raw_parts(&obj_system.raw as *const PERF_OBJECT_TYPE as *const u8, obj_system.TotalByteLength as usize);
             xxd( slice);
         }
 
@@ -72,7 +72,7 @@ fn main() {
         // println!("ObjectType PerfTime: {:?}; FreqTime: {:?}", obj_system.PerfTime, obj_system.PerfFreq);
         if let PerfObjectData::Singleton(block) = &obj_system.data {
             xxd(block.data());
-            let value = CounterVal::try_get(counter_uptime, block).expect("get value");
+            let value = CounterValue::try_get(counter_uptime, block).expect("get value");
             println!("Value: {:?}", value);
 
             // use win_high::perf::display::*;
@@ -93,7 +93,7 @@ fn main() {
     }
 }
 
-fn print_perf_data(data: &PerfDataBlock<'_>, meta: &AllCounters) {
+fn print_perf_data(data: &PerfDataBlock, meta: &AllCounters) {
     for obj in data.object_types.iter() {
         let name = &meta.get(obj.ObjectNameTitleIndex).expect("Object name").name_value;
         println!("Object #{}, name: {:?}", obj.ObjectNameTitleIndex, name);
@@ -108,7 +108,7 @@ fn print_perf_data(data: &PerfDataBlock<'_>, meta: &AllCounters) {
     }
 }
 
-fn print_counters_data(left_pad: &str, counters: &[PerfCounterDefinition<'_>], block: &PerfCounterBlock<'_>, meta: &AllCounters) {
+fn print_counters_data(left_pad: &str, counters: &[PerfCounterDefinition], block: &PerfCounterBlock, meta: &AllCounters) {
     println!("{}Data block:", left_pad);
     xxd(block.data());
     println!("{}Counters:", left_pad);

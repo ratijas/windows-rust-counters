@@ -27,7 +27,7 @@ use win_high::{
     perf::{
         consume::{CounterMeta, get_counters_info, UseLocale},
         nom::*,
-        values::CounterVal,
+        values::CounterValue,
     },
     prelude::v2::*,
 };
@@ -422,7 +422,7 @@ fn clean_on_exit(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<()
 #[derive(Debug)]
 pub struct DataPair(InstanceId, u32);
 
-fn get_as_dword(object: &PerfObjectType<'_>, counter: &PerfCounterDefinition<'_>) -> Vec<DataPair> {
+fn get_as_dword(object: &PerfObjectType, counter: &PerfCounterDefinition) -> Vec<DataPair> {
     match &object.data {
         PerfObjectData::Singleton(block) => {
             vec![get_as_dword_inner(InstanceId::perf_no_instances(), counter, block)]
@@ -435,9 +435,9 @@ fn get_as_dword(object: &PerfObjectType<'_>, counter: &PerfCounterDefinition<'_>
     }
 }
 
-fn get_as_dword_inner(instance: InstanceId, counter: &PerfCounterDefinition<'_>, block: &PerfCounterBlock<'_>) -> DataPair {
-    match CounterVal::try_get(counter, block).unwrap() {
-        CounterVal::Dword(dword) => DataPair(instance, dword),
+fn get_as_dword_inner(instance: InstanceId, counter: &PerfCounterDefinition, block: &PerfCounterBlock) -> DataPair {
+    match CounterValue::try_get(counter, block).unwrap() {
+        CounterValue::Dword(dword) => DataPair(instance, dword),
         _ => unimplemented!(),
     }
 }

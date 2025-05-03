@@ -642,6 +642,7 @@ unsafe fn copy_cstr_into_buffer(str: &U16CStr, buffer: &mut [u8], offset: u32, l
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::perf::values::CounterValue;
 
     use win_low::um::winperf::*;
 
@@ -812,11 +813,11 @@ mod test {
             match instance.UniqueID {
                 0 => {
                     assert_eq!(instance.name.to_string_lossy(), "first");
-                    assert_eq!(CounterVal::try_get(counter, block).unwrap(), CounterVal::Dword(0));
+                    assert_eq!(CounterValue::try_get(counter, block).unwrap(), CounterValue::Dword(0));
                 }
                 1 => {
                     assert_eq!(instance.name.to_string_lossy(), "second");
-                    assert_eq!(CounterVal::try_get(counter, block).unwrap(), CounterVal::Dword(2));
+                    assert_eq!(CounterValue::try_get(counter, block).unwrap(), CounterValue::Dword(2));
                 }
                 _ => unreachable!(),
             }

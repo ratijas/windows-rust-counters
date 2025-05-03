@@ -101,9 +101,9 @@ impl<'a> From<&PerfInstanceDefinitionTemplate<'a>> for InstanceId {
     }
 }
 
-impl<'a> From<&PerfInstanceDefinition<'a>> for InstanceId {
-    fn from(def: &PerfInstanceDefinition<'a>) -> Self {
-        InstanceId::new(def.UniqueID, def.name)
+impl<'a> From<&PerfInstanceDefinition> for InstanceId {
+    fn from(def: &PerfInstanceDefinition) -> Self {
+        InstanceId::new(def.UniqueID, &def.name)
     }
 }
 

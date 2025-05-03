@@ -2,57 +2,57 @@
 use core::num::NonZeroUsize;
 use std::mem;
 
-use nom::{Err, IResult, Needed, Parser, ToUsize};
-use nom::error::ErrorKind;
+use nom::{Err, IResult, Needed, Parser};
 
 use crate::prelude::v2::*;
 
 #[derive(Clone)]
-pub struct PerfDataBlock<'a> {
-    pub raw: &'a PERF_DATA_BLOCK,
-    pub system_name: &'a U16CStr,
-    pub object_types: Vec<PerfObjectType<'a>>,
+pub struct PerfDataBlock {
+    pub raw: PERF_DATA_BLOCK,
+    pub system_name: U16CString,
+    pub object_types: Vec<PerfObjectType>,
 }
 
 #[derive(Clone)]
-pub struct PerfObjectType<'a> {
-    pub raw: &'a PERF_OBJECT_TYPE,
-    pub counters: Vec<PerfCounterDefinition<'a>>,
-    pub data: PerfObjectData<'a>,
+pub struct PerfObjectType {
+    pub raw: PERF_OBJECT_TYPE,
+    pub counters: Vec<PerfCounterDefinition>,
+    pub data: PerfObjectData,
 }
 
 #[derive(Clone)]
-pub struct PerfCounterDefinition<'a> {
-    pub raw: &'a PERF_COUNTER_DEFINITION,
+pub struct PerfCounterDefinition {
+    pub raw: PERF_COUNTER_DEFINITION,
 }
 
 #[derive(Clone)]
-pub struct PerfInstanceDefinition<'a> {
-    pub raw: &'a PERF_INSTANCE_DEFINITION,
-    pub name: &'a U16CStr,
+pub struct PerfInstanceDefinition {
+    pub raw: PERF_INSTANCE_DEFINITION,
+    pub name: U16CString,
 }
 
 #[derive(Clone)]
-pub struct PerfCounterBlock<'a> {
-    pub raw: &'a PERF_COUNTER_BLOCK,
+pub struct PerfCounterBlock {
+    // pub raw: PERF_COUNTER_BLOCK,
+    pub payload: Vec<u8>,
 }
 
 /// This is an extension to support both global and multi-instance counters.
 #[derive(Clone)]
-pub enum PerfObjectData<'a> {
-    Singleton(PerfCounterBlock<'a>),
-    Instances(Vec<(PerfInstanceDefinition<'a>, PerfCounterBlock<'a>)>),
+pub enum PerfObjectData {
+    Singleton(PerfCounterBlock),
+    Instances(Vec<(PerfInstanceDefinition, PerfCounterBlock)>),
 }
 
-impl<'a> PerfObjectData<'a> {
-    pub fn singleton(&self) -> Option<&PerfCounterBlock<'a>> {
+impl PerfObjectData {
+    pub fn singleton(&self) -> Option<&PerfCounterBlock> {
         match self {
             Self::Singleton(block) => Some(block),
             Self::Instances(..) => None
         }
     }
 
-    pub fn instances(&self) -> Option<&[(PerfInstanceDefinition<'a>, PerfCounterBlock<'a>)]> {
+    pub fn instances(&self) -> Option<&[(PerfInstanceDefinition, PerfCounterBlock)]> {
         match self {
             Self::Singleton(..) => None,
             Self::Instances(vec) => Some(vec)
@@ -60,21 +60,18 @@ impl<'a> PerfObjectData<'a> {
     }
 }
 
-impl<'a> PerfCounterBlock<'a> {
+impl PerfCounterBlock {
     pub fn len(&self) -> usize {
-        self.raw.ByteLength as usize
+        self.payload.len()
     }
 
     /// Get data of this counter block as a byte slice.
-    pub fn data(&'a self) -> &'a [u8] {
-        let ptr = self.raw as *const _ as *const u8;
-        let len = self.len();
-        // SAFETY: should be OK as far as this object is constructed by a parser from this module
-        unsafe { std::slice::from_raw_parts(ptr, len) }
+    pub fn data(&self) -> &[u8] {
+        self.payload.as_slice()
     }
 }
 
-pub fn perf_data_block<'a>(input: &'a [u8]) -> IResult<&'a [u8], PerfDataBlock<'a>> {
+pub fn perf_data_block(input: &[u8]) -> IResult<&[u8], PerfDataBlock> {
     let (_, raw) = take_struct::<PERF_DATA_BLOCK>(input)?;
     // it is important to use whole input slice, because offsets are calculated relative to the
     // beginning of the PERF_DATA_BLOCK.
@@ -94,7 +91,7 @@ pub fn perf_data_block<'a>(input: &'a [u8]) -> IResult<&'a [u8], PerfDataBlock<'
     }))
 }
 
-pub fn perf_object_type<'a>(input: &'a [u8]) -> IResult<&'a [u8], PerfObjectType<'a>> {
+pub fn perf_object_type(input: &[u8]) -> IResult<&[u8], PerfObjectType> {
     let (_, raw) = take_struct::<PERF_OBJECT_TYPE>(input)?;
     // counter definitions block starts right at HeaderLength offset.
     let (_, counters) = {
@@ -129,14 +126,14 @@ pub fn perf_object_type<'a>(input: &'a [u8]) -> IResult<&'a [u8], PerfObjectType
     }))
 }
 
-pub fn perf_counter_definition<'a>(input: &'a [u8]) -> IResult<&'a [u8], PerfCounterDefinition<'a>> {
+pub fn perf_counter_definition(input: &[u8]) -> IResult<&[u8], PerfCounterDefinition> {
     nom::combinator::map(
         take_struct::<PERF_COUNTER_DEFINITION>,
         |raw| PerfCounterDefinition { raw }
     ).parse(input)
 }
 
-pub fn perf_instance_definition<'a>(input: &'a [u8]) -> IResult<&'a [u8], PerfInstanceDefinition<'a>> {
+pub fn perf_instance_definition(input: &[u8]) -> IResult<&[u8], PerfInstanceDefinition> {
     let (_, raw) = take_struct::<PERF_INSTANCE_DEFINITION>(input)?;
     // same as perf_data_block: offset is from the beginning of the input.
     let (_, name) = u16cstr(input, raw.NameOffset, raw.NameLength)?;
@@ -147,29 +144,37 @@ pub fn perf_instance_definition<'a>(input: &'a [u8]) -> IResult<&'a [u8], PerfIn
     }))
 }
 
-pub fn perf_counter_block<'a>(input: &'a [u8]) -> IResult<&'a [u8], PerfCounterBlock<'a>> {
+pub fn perf_counter_block(input: &[u8]) -> IResult<&[u8], PerfCounterBlock> {
     let (_, raw) = take_struct::<PERF_COUNTER_BLOCK>(input)?;
     // ensure that length of input is large enough
-    let (rest, _) = nom::bytes::complete::take(raw.ByteLength)(input)?;
-    Ok((rest, PerfCounterBlock { raw }))
+    let (rest, payload) = nom::bytes::complete::take(raw.ByteLength)(input)?;
+    Ok((rest, PerfCounterBlock { payload: payload.to_vec() }))
 }
 
-pub fn take_struct<S>(input: &[u8]) -> nom::IResult<&[u8], &S> {
-    // SAFETY: `take` ensures there is enough bytes in `s` slice to view it as an `S`.
+pub fn take_struct<T>(input: &[u8]) -> nom::IResult<&[u8], T>
+where
+    T: Sized,
+{
+    // SAFETY: `take` ensures there is enough bytes in `T` slice to read it as an `T`.
     nom::combinator::map(
-        nom::bytes::complete::take(mem::size_of::<S>()),
-        |s: &[u8]| unsafe { (s.as_ptr() as *const S).as_ref().unwrap() },
+        nom::bytes::complete::take(mem::size_of::<T>()),
+        |data: &[u8]| unsafe { (data.as_ptr() as *const T).read_unaligned() },
     ).parse(input)
 }
 
-pub fn u16cstr<C: ToUsize>(input: &[u8], offset: C, len: C) -> IResult<&[u8], &U16CStr> {
-    let (i1, _) = ::nom::bytes::complete::take(offset.to_usize())(input)?;
-    let (i2, u8slice) = ::nom::bytes::complete::take(len.to_usize())(i1)?;
-    // SAFETY: nul-terminated c-style string is verified by U16CStr constructor.
-    let (_empty, u16slice) = unsafe { view(u8slice) }?;
-    let u16cstr = U16CStr::from_slice_truncate(u16slice)
-        .map_err(|_| Err::Failure(nom::error::Error::new(input, ErrorKind::Char)))?;
-    IResult::Ok((i2, u16cstr))
+pub fn u16cstr(input: &[u8], offset: u32, len: u32) -> IResult<&[u8], U16CString> {
+    debug_assert!(len % 2 == 0);
+    let (i1, _) = ::nom::bytes::complete::take(offset as usize)(input)?;
+    let (i2, u8slice) = ::nom::bytes::complete::take(len as usize)(i1)?;
+
+    let mut buf = Vec::<u16>::with_capacity(len as usize / 2);
+    for _ in 0..(len as usize / 2) {
+        buf.push(0u16);
+    }
+    // u8-aligned read
+    unsafe { downcast_mut(buf.as_mut_slice()) }.copy_from_slice(u8slice);
+    let u16cstr = U16CString::from_vec_truncate(buf);
+    Ok((i2, u16cstr))
 }
 
 fn no_zst<T>() {
@@ -191,33 +196,36 @@ pub unsafe fn downcast_mut<T>(input: &mut [T]) -> &mut [u8] { unsafe {
 }}
 
 /// Error value is the remainder of a division of length by size of `T`.
-pub unsafe fn upcast<T>(input: &[u8]) -> Result<&[T], NonZeroUsize> { unsafe {
+/// Returned raw slice may be unaligned for reading.
+pub unsafe fn upcast<T>(input: &[u8]) -> Result<*const [T], NonZeroUsize> {
     no_zst::<T>();
     let len = input.len() / mem::size_of::<T>();
     let rem = input.len() % mem::size_of::<T>();
     match NonZeroUsize::new(rem) {
         Some(rem) => Err(rem),
-        None => Ok(std::slice::from_raw_parts(input.as_ptr().cast(), len)),
+        None => Ok(std::ptr::slice_from_raw_parts(input.as_ptr().cast(), len)),
     }
-}}
+}
 
 /// Error value is the remainder of a division of length by size of `T`.
-pub unsafe fn upcast_mut<T>(input: &mut [u8]) -> Result<&mut [T], NonZeroUsize> { unsafe {
+/// Returned raw slice may be unaligned for reading.
+pub unsafe fn upcast_mut<T>(input: &mut [u8]) -> Result<*mut [T], NonZeroUsize> {
     no_zst::<T>();
     let len = input.len() / mem::size_of::<T>();
     let rem = input.len() % mem::size_of::<T>();
     match NonZeroUsize::new(rem) {
         Some(rem) => Err(rem),
-        None => Ok(std::slice::from_raw_parts_mut(input.as_mut_ptr().cast(), len)),
+        None => Ok(std::ptr::slice_from_raw_parts_mut(input.as_mut_ptr().cast(), len)),
     }
-}}
+}
 
-/// Consumes all the input, transmutes input as a slice of `T`.
+/// Consumes all the input, transmutes input as a raw slice of `T`.
 /// On success, output of parser will be empty.
 ///
 /// SAFETY: this function ensures that input length is divisible by size of `T`,
 /// but otherwise the semantics of achieved result depends on the actual `T` type.
-pub unsafe fn view<T>(input: &[u8]) -> IResult<&[u8], &[T]> { unsafe {
+/// Returned raw slice may be unaligned for reading.
+pub unsafe fn view<T>(input: &[u8]) -> IResult<&[u8], *const [T]> { unsafe {
     let (empty, i1) = nom::bytes::complete::take(input.len())(input)?;
     debug_assert!(empty.is_empty());
     let slice_t = upcast::<T>(i1)
@@ -230,43 +238,35 @@ mod imp_deref {
 
     use super::*;
 
-    impl<'a> Deref for PerfDataBlock<'a> {
+    impl Deref for PerfDataBlock {
         type Target = PERF_DATA_BLOCK;
 
         fn deref(&self) -> &Self::Target {
-            self.raw
+            &self.raw
         }
     }
 
-    impl<'a> Deref for PerfObjectType<'a> {
+    impl Deref for PerfObjectType {
         type Target = PERF_OBJECT_TYPE;
 
         fn deref(&self) -> &Self::Target {
-            self.raw
+            &self.raw
         }
     }
 
-    impl<'a> Deref for PerfCounterDefinition<'a> {
+    impl Deref for PerfCounterDefinition {
         type Target = PERF_COUNTER_DEFINITION;
 
         fn deref(&self) -> &Self::Target {
-            self.raw
+            &self.raw
         }
     }
 
-    impl<'a> Deref for PerfInstanceDefinition<'a> {
+    impl Deref for PerfInstanceDefinition {
         type Target = PERF_INSTANCE_DEFINITION;
 
         fn deref(&self) -> &Self::Target {
-            self.raw
-        }
-    }
-
-    impl<'a> Deref for PerfCounterBlock<'a> {
-        type Target = PERF_COUNTER_BLOCK;
-
-        fn deref(&self) -> &Self::Target {
-            self.raw
+            &self.raw
         }
     }
 }
@@ -293,8 +293,8 @@ mod test {
                 let processes_counter = obj.counters.iter()
                     .find(|c| c.raw.CounterNameTitleIndex == 248)
                     .expect("Processes counter");
-                let res = CounterVal::try_get(processes_counter, block);
-                assert_eq!(res, Ok(CounterVal::Dword(201)));
+                let res = CounterValue::try_get(processes_counter, block);
+                assert_eq!(res, Ok(CounterValue::Dword(201)));
             }
             _ => panic!("should be an object without instances"),
         }
