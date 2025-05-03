@@ -15,7 +15,7 @@ pub enum CounterValue {
 }
 
 impl CounterValue {
-    pub fn borrow(&self) -> CounterVal {
+    pub fn borrow<'a>(&'a self) -> CounterVal<'a> {
         match *self {
             Self::Dword(value) => CounterVal::Dword(value),
             Self::Large(value) => CounterVal::Large(value),
@@ -60,7 +60,7 @@ impl<'b> CounterVal<'b> {
         }
     }
 
-    pub fn try_get<'a>(def: &'a PerfCounterDefinition, block: &'b PerfCounterBlock) -> Result<Self, ValueError> {
+    pub fn try_get(def: &PerfCounterDefinition<'_>, block: &'b PerfCounterBlock<'_>) -> Result<Self, ValueError> {
         get_value(def, block)
     }
 
@@ -93,13 +93,13 @@ impl<'b> CounterVal<'b> {
     }
 }
 
-pub fn get_slice<'a, 'b>(def: &'a PerfCounterDefinition, block: &'b PerfCounterBlock) -> Option<&'b [u8]> {
+pub fn get_slice<'a>(def: &PerfCounterDefinition<'_>, block: &'a PerfCounterBlock<'_>) -> Option<&'a [u8]> {
     let len = def.raw.CounterSize as usize;
     let offset = def.raw.CounterOffset as usize;
     block.data().get(offset..offset + len)
 }
 
-fn get_value<'a, 'b>(def: &'a PerfCounterDefinition, block: &'b PerfCounterBlock) -> Result<CounterVal<'b>, ValueError> {
+fn get_value<'a>(def: &PerfCounterDefinition<'_>, block: &'a PerfCounterBlock<'_>) -> Result<CounterVal<'a>, ValueError> {
     let typ = CounterTypeDefinition::try_from(def).expect("counter");
     let mut slice = get_slice(def, block).ok_or(ValueError::BadSize)?;
     let value = unsafe {

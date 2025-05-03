@@ -93,7 +93,7 @@ fn main() {
     }
 }
 
-fn print_perf_data(data: &PerfDataBlock, meta: &AllCounters) {
+fn print_perf_data(data: &PerfDataBlock<'_>, meta: &AllCounters) {
     for obj in data.object_types.iter() {
         let name = &meta.get(obj.ObjectNameTitleIndex).expect("Object name").name_value;
         println!("Object #{}, name: {:?}", obj.ObjectNameTitleIndex, name);
@@ -108,7 +108,7 @@ fn print_perf_data(data: &PerfDataBlock, meta: &AllCounters) {
     }
 }
 
-fn print_counters_data(left_pad: &str, counters: &[PerfCounterDefinition], block: &PerfCounterBlock, meta: &AllCounters) {
+fn print_counters_data(left_pad: &str, counters: &[PerfCounterDefinition<'_>], block: &PerfCounterBlock<'_>, meta: &AllCounters) {
     println!("{}Data block:", left_pad);
     xxd(block.data());
     println!("{}Counters:", left_pad);

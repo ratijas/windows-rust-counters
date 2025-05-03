@@ -74,7 +74,7 @@ impl<'a> PerfCounterBlock<'a> {
     }
 }
 
-pub fn perf_data_block(input: &[u8]) -> IResult<&[u8], PerfDataBlock> {
+pub fn perf_data_block<'a>(input: &'a [u8]) -> IResult<&'a [u8], PerfDataBlock<'a>> {
     let (_, raw) = take_struct::<PERF_DATA_BLOCK>(input)?;
     // it is important to use whole input slice, because offsets are calculated relative to the
     // beginning of the PERF_DATA_BLOCK.
@@ -94,7 +94,7 @@ pub fn perf_data_block(input: &[u8]) -> IResult<&[u8], PerfDataBlock> {
     }))
 }
 
-pub fn perf_object_type(input: &[u8]) -> IResult<&[u8], PerfObjectType> {
+pub fn perf_object_type<'a>(input: &'a [u8]) -> IResult<&'a [u8], PerfObjectType<'a>> {
     let (_, raw) = take_struct::<PERF_OBJECT_TYPE>(input)?;
     // counter definitions block starts right at HeaderLength offset.
     let (_, counters) = {
@@ -129,14 +129,14 @@ pub fn perf_object_type(input: &[u8]) -> IResult<&[u8], PerfObjectType> {
     }))
 }
 
-pub fn perf_counter_definition(input: &[u8]) -> IResult<&[u8], PerfCounterDefinition> {
+pub fn perf_counter_definition<'a>(input: &'a [u8]) -> IResult<&'a [u8], PerfCounterDefinition<'a>> {
     nom::combinator::map(
         take_struct::<PERF_COUNTER_DEFINITION>,
         |raw| PerfCounterDefinition { raw }
     ).parse(input)
 }
 
-pub fn perf_instance_definition(input: &[u8]) -> IResult<&[u8], PerfInstanceDefinition> {
+pub fn perf_instance_definition<'a>(input: &'a [u8]) -> IResult<&'a [u8], PerfInstanceDefinition<'a>> {
     let (_, raw) = take_struct::<PERF_INSTANCE_DEFINITION>(input)?;
     // same as perf_data_block: offset is from the beginning of the input.
     let (_, name) = u16cstr(input, raw.NameOffset, raw.NameLength)?;
@@ -147,7 +147,7 @@ pub fn perf_instance_definition(input: &[u8]) -> IResult<&[u8], PerfInstanceDefi
     }))
 }
 
-pub fn perf_counter_block(input: &[u8]) -> IResult<&[u8], PerfCounterBlock> {
+pub fn perf_counter_block<'a>(input: &'a [u8]) -> IResult<&'a [u8], PerfCounterBlock<'a>> {
     let (_, raw) = take_struct::<PERF_COUNTER_BLOCK>(input)?;
     // ensure that length of input is large enough
     let (rest, _) = nom::bytes::complete::take(raw.ByteLength)(input)?;

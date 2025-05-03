@@ -42,14 +42,15 @@ pub trait PerfProvider {
 
     fn counters(&self, for_object: &PerfObjectTypeTemplate) -> &[PerfCounterDefinitionTemplate];
 
-    fn instances(&self, for_object: &PerfObjectTypeTemplate) -> Option<Vec<PerfInstanceDefinitionTemplate>>;
+    fn instances<'a>(&'a self, for_object: &PerfObjectTypeTemplate) -> Option<Vec<PerfInstanceDefinitionTemplate<'a>>>;
 
-    fn data(&self,
-            for_object: &PerfObjectTypeTemplate,
-            per_counter: &PerfCounterDefinitionTemplate,
-            per_instance: Option<&PerfInstanceDefinitionTemplate>,
-            now: PerfClock,
-    ) -> CounterVal;
+    fn data<'a>(
+        &'a self,
+        for_object: &PerfObjectTypeTemplate,
+        per_counter: &PerfCounterDefinitionTemplate,
+        per_instance: Option<&PerfInstanceDefinitionTemplate<'a>>,
+        now: PerfClock,
+    ) -> CounterVal<'a>;
 
     fn should_respond(&self, to_query: &QueryType, with_object: &PerfObjectTypeTemplate) -> WinResult<bool> {
         let answer = match to_query {
@@ -75,8 +76,7 @@ pub trait PerfProvider {
         object_template: &PerfObjectTypeTemplate,
         now: PerfClock,
         buffer: &'a mut [u8],
-    ) -> WinResult<(usize, &'a mut [u8])>
-    {
+    ) -> WinResult<(usize, &'a mut [u8])> {
         // build all headers and definitions before writing anything.
         // counters data will be requested at the very last step, when it is really needed.
         let first_counter = self.first_counter(object_template)?;
@@ -144,7 +144,7 @@ pub trait PerfProvider {
     fn write_block<'a>(
         &self,
         object_template: &PerfObjectTypeTemplate,
-        instance_template: Option<&PerfInstanceDefinitionTemplate>,
+        instance_template: Option<&PerfInstanceDefinitionTemplate<'a>>,
         counter_templates: &[PerfCounterDefinitionTemplate],
         counters_block_template: &CountersBlockTemplate,
         now: PerfClock,
@@ -237,11 +237,17 @@ impl<X: PerfProvider> PerfProvider for CachingPerfProvider<X> {
         self.inner.counters(for_object)
     }
 
-    fn instances(&self, for_object: &PerfObjectTypeTemplate) -> Option<Vec<PerfInstanceDefinitionTemplate>> {
+    fn instances<'a>(&'a self, for_object: &PerfObjectTypeTemplate) -> Option<Vec<PerfInstanceDefinitionTemplate<'a>>> {
         self.inner.instances(for_object)
     }
 
-    fn data(&self, for_object: &PerfObjectTypeTemplate, per_counter: &PerfCounterDefinitionTemplate, per_instance: Option<&PerfInstanceDefinitionTemplate>, now: PerfClock) -> CounterVal {
+    fn data<'a>(
+        &'a self,
+        for_object: &PerfObjectTypeTemplate,
+        per_counter: &PerfCounterDefinitionTemplate,
+        per_instance: Option<&PerfInstanceDefinitionTemplate<'a>>,
+        now: PerfClock,
+    ) -> CounterVal<'a> {
         self.inner.data(for_object, per_counter, per_instance, now)
     }
 
@@ -447,6 +453,13 @@ impl<'a> PerfInstanceDefinitionTemplate<'a> {
         }
     }
 
+    pub fn into_owned(self) -> PerfInstanceDefinitionTemplate<'static> {
+        PerfInstanceDefinitionTemplate {
+            Name: Cow::from(self.Name.into_owned()),
+            ..self
+        }
+    }
+
     pub fn with_unique_id(mut self, unique_id: i32) -> Self {
         self.UniqueID = unique_id;
         self
@@ -591,13 +604,11 @@ fn layout_of_counters(first_counter: u32, templates: &[PerfCounterDefinitionTemp
     block
 }
 
-fn layout_of_instances(templates: &[PerfInstanceDefinitionTemplate]) -> Vec<PERF_INSTANCE_DEFINITION> {
-    let mut instances = Vec::new();
-    for template in templates {
-        let instance = template.build_layout();
-        instances.push(instance);
-    };
-    instances
+fn layout_of_instances(templates: &[PerfInstanceDefinitionTemplate<'_>]) -> Vec<PERF_INSTANCE_DEFINITION> {
+    templates
+        .iter()
+        .map(|t| t.build_layout())
+        .collect()
 }
 
 fn error_small_buffer(_: ()) -> WinError {
@@ -671,11 +682,17 @@ mod test {
             self.counters.as_ref()
         }
 
-        fn instances(&self, _for_object: &PerfObjectTypeTemplate) -> Option<Vec<PerfInstanceDefinitionTemplate>> {
+        fn instances<'a>(&'a self, _for_object: &PerfObjectTypeTemplate) -> Option<Vec<PerfInstanceDefinitionTemplate<'a>>> {
             None
         }
 
-        fn data(&self, _for_object: &PerfObjectTypeTemplate, per_counter: &PerfCounterDefinitionTemplate, _per_instance: Option<&PerfInstanceDefinitionTemplate>, _now: PerfClock) -> CounterVal {
+        fn data<'a>(
+            &'a self,
+            _for_object: &PerfObjectTypeTemplate,
+            per_counter: &PerfCounterDefinitionTemplate,
+            _per_instance: Option<&PerfInstanceDefinitionTemplate<'a>>,
+            _now: PerfClock,
+        ) -> CounterVal<'a> {
             match per_counter.counter_type.size() {
                 Size::Dword => CounterVal::Dword(42),
                 Size::Large => CounterVal::Large(37),
@@ -743,7 +760,7 @@ mod test {
             &self.counters
         }
 
-        fn instances(&self, for_object: &PerfObjectTypeTemplate) -> Option<Vec<PerfInstanceDefinitionTemplate>> {
+        fn instances<'a>(&'a self, for_object: &PerfObjectTypeTemplate) -> Option<Vec<PerfInstanceDefinitionTemplate<'a>>> {
             Some(self.instances.iter().enumerate().map(|(id, name)| {
                 PerfInstanceDefinitionTemplate::new(
                     Cow::from(
@@ -753,12 +770,13 @@ mod test {
             }).collect())
         }
 
-        fn data(&self,
-                for_object: &PerfObjectTypeTemplate,
-                per_counter: &PerfCounterDefinitionTemplate,
-                per_instance: Option<&PerfInstanceDefinitionTemplate>,
-                now: PerfClock,
-        ) -> CounterVal {
+        fn data<'a>(
+            &'a self,
+            for_object: &PerfObjectTypeTemplate,
+            per_counter: &PerfCounterDefinitionTemplate,
+            per_instance: Option<&PerfInstanceDefinitionTemplate<'a>>,
+            now: PerfClock,
+        ) -> CounterVal<'a> {
             match per_instance {
                 Some(instance) => CounterVal::Dword((2 * instance.UniqueID) as _),
                 None => CounterVal::Dword(42),

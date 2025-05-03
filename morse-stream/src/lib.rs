@@ -343,7 +343,7 @@ impl MorseDecodeError {
 impl Error for MorseDecodeError {}
 
 impl fmt::Display for MorseDecodeError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}", self)
     }
 }

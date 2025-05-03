@@ -156,7 +156,7 @@ impl<X: Tx> Tx for CancellableTx<X> {
 }
 
 impl fmt::Display for CancelledError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         "Tx was cancelled (via shared AtomicBool)".fmt(f)
     }
 }

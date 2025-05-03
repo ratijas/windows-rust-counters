@@ -22,7 +22,7 @@ const COLOR_ON_PRIMARY: Color = Color::White;
 const COLOR_ON_SECONDARY: Color = Color::White;
 const COLOR_ON_BACKGROUND: Color = Color::Reset;
 
-pub fn draw(f: &mut Frame, app: &mut App) -> io::Result<()> {
+pub fn draw(f: &mut Frame<'_>, app: &mut App) -> io::Result<()> {
     let area = f.area();
     // let _lock = app.stats_read();
     print!("");
@@ -48,7 +48,7 @@ pub fn draw(f: &mut Frame, app: &mut App) -> io::Result<()> {
     Ok(())
 }
 
-fn draw_header(f: &mut Frame, app: &App, area: Rect) -> io::Result<()> {
+fn draw_header(f: &mut Frame<'_>, app: &App, area: Rect) -> io::Result<()> {
     let object = app.stats_read().meta.clone();
     let block = Paragraph::new(&*object.help_value)
         .alignment(Alignment::Center)
@@ -64,7 +64,7 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) -> io::Result<()> {
 }
 
 /// Returns sub-chunk of the rest area.
-fn draw_tabs(f: &mut Frame, app: &App, area: Rect) -> io::Result<Rect> {
+fn draw_tabs(f: &mut Frame<'_>, app: &App, area: Rect) -> io::Result<Rect> {
     let tabs = app.stats_read().counters.iter().map(|s| Line::raw(s.meta.name_value.clone())).collect::<Vec<_>>();
     let selected_index = app.active_counter_index().unwrap_or(usize::MAX);
 
@@ -94,7 +94,7 @@ fn draw_tabs(f: &mut Frame, app: &App, area: Rect) -> io::Result<Rect> {
     Ok(chunks[1])
 }
 
-fn draw_stat(f: &mut Frame, app: &App, stat: CounterStats, area: Rect) -> io::Result<()> {
+fn draw_stat(f: &mut Frame<'_>, app: &App, stat: CounterStats, area: Rect) -> io::Result<()> {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -192,7 +192,7 @@ fn color_for<T: Hash>(t: &T) -> Color {
     colors[(1 + calculate_hash(t)) as usize % colors.len()]
 }
 
-fn draw_placeholder(f: &mut Frame, area: Rect) -> io::Result<()> {
+fn draw_placeholder(f: &mut Frame<'_>, area: Rect) -> io::Result<()> {
     let widget = Paragraph::new(vec![])
         .block(Block::default()
             .borders(Borders::ALL)

@@ -171,7 +171,7 @@ impl Hash for InstanceId {
 }
 
 impl std::fmt::Display for InstanceId {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if self == &Self::perf_no_instances() {
             "PERF_NO_INSTANCES".fmt(f)
         } else {
@@ -218,7 +218,7 @@ impl ObjectData {
         }
     }
 
-    pub fn get(&self, counter_id: CounterId, instance_id: InstanceId) -> Option<CounterVal> {
+    pub fn get<'a>(&'a self, counter_id: CounterId, instance_id: InstanceId) -> Option<CounterVal<'a>> {
         self.inner.get(&(counter_id, instance_id)).map(|owned| owned.borrow())
     }
 

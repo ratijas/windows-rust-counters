@@ -243,7 +243,7 @@ impl App {
         self.inner.stats()
     }
 
-    pub fn stats_read(&self) -> RwLockReadGuard<ObjectStats> {
+    pub fn stats_read<'a>(&'a self) -> RwLockReadGuard<'a, ObjectStats> {
         self.stats().read().unwrap()
     }
 
@@ -422,7 +422,7 @@ fn clean_on_exit(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<()
 #[derive(Debug)]
 pub struct DataPair(InstanceId, u32);
 
-fn get_as_dword(object: &PerfObjectType, counter: &PerfCounterDefinition) -> Vec<DataPair> {
+fn get_as_dword(object: &PerfObjectType<'_>, counter: &PerfCounterDefinition<'_>) -> Vec<DataPair> {
     match &object.data {
         PerfObjectData::Singleton(block) => {
             vec![get_as_dword_inner(InstanceId::perf_no_instances(), counter, block)]
@@ -435,7 +435,7 @@ fn get_as_dword(object: &PerfObjectType, counter: &PerfCounterDefinition) -> Vec
     }
 }
 
-fn get_as_dword_inner(instance: InstanceId, counter: &PerfCounterDefinition, block: &PerfCounterBlock) -> DataPair {
+fn get_as_dword_inner(instance: InstanceId, counter: &PerfCounterDefinition<'_>, block: &PerfCounterBlock<'_>) -> DataPair {
     match CounterVal::try_get(counter, block).unwrap() {
         CounterVal::Dword(dword) => DataPair(instance, dword),
         _ => unimplemented!(),

@@ -372,13 +372,13 @@ mod imp {
     }
 
     impl<T> fmt::Debug for DecodeError<T> {
-        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             "DecodeError(..)".fmt(f)
         }
     }
 
     impl<T> fmt::Display for DecodeError<T> {
-        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             "failed to decode a signal".fmt(f)
         }
     }
