@@ -178,20 +178,20 @@ fn no_zst<T>() {
     }
 }
 
-pub unsafe fn downcast<T>(input: &[T]) -> &[u8] {
+pub unsafe fn downcast<T>(input: &[T]) -> &[u8] { unsafe {
     no_zst::<T>();
     let len = input.len() * mem::size_of::<T>();
     std::slice::from_raw_parts(input.as_ptr().cast(), len)
-}
+}}
 
-pub unsafe fn downcast_mut<T>(input: &mut [T]) -> &mut [u8] {
+pub unsafe fn downcast_mut<T>(input: &mut [T]) -> &mut [u8] { unsafe {
     no_zst::<T>();
     let len = input.len() * mem::size_of::<T>();
     std::slice::from_raw_parts_mut(input.as_mut_ptr().cast(), len)
-}
+}}
 
 /// Error value is the remainder of a division of length by size of `T`.
-pub unsafe fn upcast<T>(input: &[u8]) -> Result<&[T], NonZeroUsize> {
+pub unsafe fn upcast<T>(input: &[u8]) -> Result<&[T], NonZeroUsize> { unsafe {
     no_zst::<T>();
     let len = input.len() / mem::size_of::<T>();
     let rem = input.len() % mem::size_of::<T>();
@@ -199,10 +199,10 @@ pub unsafe fn upcast<T>(input: &[u8]) -> Result<&[T], NonZeroUsize> {
         Some(rem) => Err(rem),
         None => Ok(std::slice::from_raw_parts(input.as_ptr().cast(), len)),
     }
-}
+}}
 
 /// Error value is the remainder of a division of length by size of `T`.
-pub unsafe fn upcast_mut<T>(input: &mut [u8]) -> Result<&mut [T], NonZeroUsize> {
+pub unsafe fn upcast_mut<T>(input: &mut [u8]) -> Result<&mut [T], NonZeroUsize> { unsafe {
     no_zst::<T>();
     let len = input.len() / mem::size_of::<T>();
     let rem = input.len() % mem::size_of::<T>();
@@ -210,20 +210,20 @@ pub unsafe fn upcast_mut<T>(input: &mut [u8]) -> Result<&mut [T], NonZeroUsize> 
         Some(rem) => Err(rem),
         None => Ok(std::slice::from_raw_parts_mut(input.as_mut_ptr().cast(), len)),
     }
-}
+}}
 
 /// Consumes all the input, transmutes input as a slice of `T`.
 /// On success, output of parser will be empty.
 ///
 /// SAFETY: this function ensures that input length is divisible by size of `T`,
 /// but otherwise the semantics of achieved result depends on the actual `T` type.
-pub unsafe fn view<T>(input: &[u8]) -> IResult<&[u8], &[T]> {
+pub unsafe fn view<T>(input: &[u8]) -> IResult<&[u8], &[T]> { unsafe {
     let (empty, i1) = nom::bytes::complete::take(input.len())(input)?;
     debug_assert!(empty.is_empty());
     let slice_t = upcast::<T>(i1)
         .map_err(|rem| Err::Incomplete(Needed::new(mem::size_of::<T>() - rem.get())))?;
     Ok((empty, slice_t))
-}
+}}
 
 mod imp_deref {
     use std::ops::Deref;

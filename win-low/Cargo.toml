@@ -2,7 +2,7 @@
 name = "win-low"
 version = "0.1.0"
 authors = ["ivan tkachenko <ratijas@users.noreply.github.com>"]
-edition = "2018"
+edition = "2024"
 description = "Low-level WinAPI bindings which are missing in windows crate"
 
 [lib]

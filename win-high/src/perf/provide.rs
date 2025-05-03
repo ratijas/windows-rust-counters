@@ -620,14 +620,14 @@ fn error_internal(_: ()) -> WinError {
     WinError::new_with_message(ERROR_ACCESS_DENIED)
 }
 
-unsafe fn copy_struct_into_buffer<'a, T>(source: &T, buffer: &'a mut [u8]) -> Result<&'a mut [u8], ()> {
+unsafe fn copy_struct_into_buffer<'a, T>(source: &T, buffer: &'a mut [u8]) -> Result<&'a mut [u8], ()> { unsafe {
     let size = size_of::<T>();
     let slice_u8 = buffer.get_mut(..size).ok_or(())?;
     slice_u8.as_mut_ptr().cast::<T>().copy_from_nonoverlapping(source as *const _, 1);
     buffer.get_mut(size..).ok_or(())
-}
+}}
 
-unsafe fn copy_cstr_into_buffer(str: &U16CStr, buffer: &mut [u8], offset: u32, length: u32) -> Result<(), ()> {
+unsafe fn copy_cstr_into_buffer(str: &U16CStr, buffer: &mut [u8], offset: u32, length: u32) -> Result<(), ()> { unsafe {
     let offset = offset as usize;
     let length = length as usize;
     let slice_u8 = buffer.get_mut(offset..offset + length).ok_or(())?;
@@ -637,7 +637,7 @@ unsafe fn copy_cstr_into_buffer(str: &U16CStr, buffer: &mut [u8], offset: u32, l
     }
     slice_u8.copy_from_slice(str_u8);
     Ok(())
-}
+}}
 
 #[cfg(test)]
 mod test {

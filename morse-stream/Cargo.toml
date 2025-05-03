@@ -2,7 +2,7 @@
 name = "morse-stream"
 version = "0.1.0"
 authors = ["ivan tkachenko <ratijas@users.noreply.github.com>"]
-edition = "2018"
+edition = "2024"
 description = "Morse Code streaming coder and decoder"
 
 [lib]

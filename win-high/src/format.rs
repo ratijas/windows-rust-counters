@@ -13,7 +13,7 @@ use crate::prelude::v2::*;
 /// This function panics if `p` is null.
 pub unsafe fn split_nul_delimited_double_nul_terminated_ptr<'a>(
     p: *const u16
-) -> NullDelimitedDoubleNullTerminated<'a> {
+) -> NullDelimitedDoubleNullTerminated<'a> { unsafe {
     assert!(!p.is_null());
     // if buffer consists only of double-nul sequence, move `current` straight to its end.
     let current = if is_double_null_terminator(p) { p.add(1) } else { p };
@@ -25,7 +25,7 @@ pub unsafe fn split_nul_delimited_double_nul_terminated_ptr<'a>(
         end,
         _marker: PhantomData,
     }
-}
+}}
 
 /// Iterate oven nul-terminated substrings of the slice which must be
 /// terminated by double-nul sequence.
@@ -82,14 +82,14 @@ pub struct NullDelimitedDoubleNullTerminated<'a> {
 /// # Panics
 ///
 /// This function panics if `p` is null.
-pub unsafe fn find_double_null_terminator(mut p: *const u16) -> *const u16 {
+pub unsafe fn find_double_null_terminator(mut p: *const u16) -> *const u16 { unsafe {
     assert!(!p.is_null());
 
     while !is_double_null_terminator(p) {
         p = p.add(1);
     }
     p
-}
+}}
 
 /// Reads item pointed by this `p` and the next item right after it,
 /// and compare both items with NULL value for their type.
@@ -97,11 +97,11 @@ pub unsafe fn find_double_null_terminator(mut p: *const u16) -> *const u16 {
 /// # Panics
 ///
 /// This function panics if `p` is null.
-pub unsafe fn is_double_null_terminator(p: *const u16) -> bool {
+pub unsafe fn is_double_null_terminator(p: *const u16) -> bool { unsafe {
     assert!(!p.is_null());
 
     p.read() == 0 && p.add(1).read() == 0
-}
+}}
 
 mod imp {
     use super::*;

@@ -30,7 +30,7 @@ const _: PM_OPEN_PROC = Some(MyOpenProc);
 const _: PM_COLLECT_PROC = Some(MyCollectProc);
 const _: PM_CLOSE_PROC = Some(MyCloseProc);
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 extern "system" fn MyOpenProc(pContext: PCWSTR) -> u32 {
     eventlog::init("Morse", log::Level::Info).unwrap();
 
@@ -53,7 +53,7 @@ extern "system" fn MyOpenProc(pContext: PCWSTR) -> u32 {
     ERROR_SUCCESS.0
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 extern "system" fn MyCollectProc(
     lpValueName: PCWSTR,
     lppData: *mut *mut core::ffi::c_void,
@@ -107,7 +107,7 @@ fn collect(
     Ok(())
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 extern "system" fn MyCloseProc() -> u32 {
     info!("Received request to close");
 

@@ -24,7 +24,7 @@ pub unsafe fn get_sample(
     counter: &PERF_COUNTER_DEFINITION,
     counter_data_block: &PERF_COUNTER_BLOCK,
 ) -> Result<Sample, ()>
-{
+{ unsafe {
     let mut base_counter_ptr: *const PERF_COUNTER_DEFINITION = counter as *const _;
     let mut sample: Sample = std::mem::zeroed();
     sample.CounterType = CounterTypeDefinition::from_raw(counter.CounterType).ok_or(())?;
@@ -195,7 +195,7 @@ pub unsafe fn get_sample(
         sample.MultiCounterData = ((data_ptr as *const u64).offset(1) as *const u32).read_unaligned();
     }
     Ok(sample)
-}
+}}
 
 /// Use the CounterType to determine how to calculate the displayable
 /// value. The case statement includes the formula used to calculate

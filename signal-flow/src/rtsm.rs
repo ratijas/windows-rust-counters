@@ -193,7 +193,7 @@ mod imp {
         fn increment_range_if_needed(&mut self, signal: Signal) -> X::Item {
             // cache current_signal to satisfy borrow checker.
             let current = self.current;
-            let RangeValue { ref range, value } = self.ranges_for_signal(signal);
+            let RangeValue { range, value } = self.ranges_for_signal(signal);
             // increment only if signal stays at the same value
             if let Some(current_signal) = current {
                 if current_signal == signal {
