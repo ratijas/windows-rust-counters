@@ -1,8 +1,8 @@
 # Windows performance counters in Rust
 
 This all started as a simple university assignment on building a custom Windows
-performance counters object provider written in C++. Guess what? Not it's in
-Rust. And it's not merely a simple counter, but a framework for building them.
+performance counters object provider in C++. Guess what? Now it is in Rust.
+And it's not merely a simple counter, but a framework for building them.
 
 # Windows + Rust = <3
 
