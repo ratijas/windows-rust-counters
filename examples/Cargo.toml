@@ -8,7 +8,6 @@ description = "Dummy library to gather single-file examples in one place"
 [dependencies]
 
 libc = "0.2"
-hexyl = "0.16.0"
 widestring = "1.2"
 
 signal-flow = { path = "../signal-flow" }

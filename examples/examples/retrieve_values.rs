@@ -1,7 +1,5 @@
-use std::io::{self, Cursor};
+use std::io::{self, Write};
 use std::mem::align_of;
-
-use hexyl::*;
 
 use win_high::perf::{consume::*, nom::*, types::*, values::*};
 use win_high::prelude::v2::*;
@@ -183,16 +181,50 @@ fn do_get_values() -> WinResult<Vec<u8>> {
 }
 
 fn xxd(buffer: &[u8]) {
-    let mut reader = Cursor::new(buffer);
+    const BYTES_PER_LINE: usize = 16;
+
     let stdout = io::stdout();
-    let mut stdout_lock = stdout.lock();
+    let mut f = stdout.lock();
 
-    let mut printer = PrinterBuilder::new(&mut stdout_lock)
-        .show_color(true)
-        .with_border_style(BorderStyle::Unicode)
-        .enable_squeezing(false)
-        .build();
-
-    printer.display_offset(0);
-    printer.print_all(&mut reader).expect("xxd");
+    writeln!(f, "┌────────┬─────────────────────────┬─────────────────────────┬────────┬────────┐").expect("xxd");
+    let mut idx: usize = 0;
+    while idx < buffer.len() {
+        let line_len = BYTES_PER_LINE.min(buffer.len() - idx);
+        write!(f, "│{:08x}│ ", idx).expect("xxd");
+        for i in 0..BYTES_PER_LINE {
+            if i < line_len {
+                let byte = buffer[idx + i];
+                write!(f, "{:02x} ", byte).expect("xxd");
+            } else {
+                write!(f, "   ").expect("xxd");
+            }
+            if i == BYTES_PER_LINE / 2 - 1 {
+                write!(f, "┊ ").expect("xxd");
+            }
+        }
+        write!(f, "│").expect("xxd");
+        for i in 0..BYTES_PER_LINE {
+            if i < line_len {
+                let byte = buffer[idx + i];
+                let chr = if byte == 0x00 {
+                        '.'
+                    } else if byte == 0x20 {
+                        ' '
+                    } else if byte.is_ascii_graphic() {
+                        byte as char
+                    } else {
+                        '.'
+                    };
+                write!(f, "{}", chr).expect("xxd");
+            } else {
+                write!(f, " ").expect("xxd");
+            }
+            if i == BYTES_PER_LINE / 2 - 1 {
+                write!(f, "┊").expect("xxd");
+            }
+        }
+        writeln!(f, "│").expect("xxd");
+        idx += BYTES_PER_LINE;
+    }
+    writeln!(f, "└────────┴─────────────────────────┴─────────────────────────┴────────┴────────┘").expect("xxd");
 }
